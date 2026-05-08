@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pintos Open Tests Study</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --paper: #ffffff;
+      --ink: #1f2933;
+      --muted: #52606d;
+      --line: #d9e2ec;
+      --navy: #102a43;
+      --blue: #2563eb;
+      --teal: #0f766e;
+      --amber: #b7791f;
+      --red: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      background: var(--navy);
+      color: #f8fafc;
+      padding: 42px 24px 34px;
+    }
+
+    header .wrap,
+    main,
+    footer {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      line-height: 1.1;
+    }
+
+    .lead {
+      max-width: 860px;
+      margin: 0;
+      color: #dbeafe;
+      font-size: 1.06rem;
+    }
+
+    main {
+      padding: 28px 20px 52px;
+    }
+
+    section {
+      margin: 18px 0;
+      padding: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.42rem;
+      line-height: 1.25;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 1.04rem;
+    }
+
+    p {
+      margin: 9px 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #edf2f7;
+      color: #1e3a8a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 0.94rem;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf2f7;
+      color: #243b53;
+    }
+
+    ul,
+    ol {
+      padding-left: 22px;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    .callout {
+      padding: 14px 16px;
+      border-radius: 8px;
+      margin: 14px 0;
+    }
+
+    .note {
+      border-left: 4px solid var(--blue);
+      background: #eff6ff;
+    }
+
+    .ok {
+      border-left: 4px solid var(--teal);
+      background: #f0fdfa;
+    }
+
+    .warn {
+      border-left: 4px solid var(--amber);
+      background: #fffbeb;
+    }
+
+    .danger {
+      border-left: 4px solid var(--red);
+      background: #fff5f5;
+    }
+
+    footer {
+      padding: 0 20px 42px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        padding: 18px 14px 42px;
+      }
+
+      section {
+        padding: 18px;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>SYS_OPEN 테스트 해석</h1>
+      <p class="lead">
+        Pintos Project 2의 <code>open(file)</code> 관련 테스트가 무엇을 확인하는지 정리한 문서입니다.
+        <code>open</code>은 파일 이름으로 열린 <code>struct file *</code>을 얻고, fd table에 등록한 뒤 fd 번호를 반환합니다.
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>핵심 흐름</h2>
+      <p>
+        <code>open</code>은 파일을 새로 만드는 syscall이 아닙니다.
+        이미 존재하는 파일 이름으로 <code>filesys_open()</code>을 호출하고, 성공하면 반환된 <code>struct file *</code>을 fd table에 저장합니다.
+      </p>
+      <div class="callout note">
+        <strong>핵심 차이:</strong>
+        <code>create</code>는 성공 여부를 반환하지만, <code>open</code>은 성공 시 fd 번호를 반환합니다.
+        fd 번호는 유저 프로그램이 이후 <code>read</code>, <code>write</code>, <code>filesize</code>, <code>close</code>에 넘기는 핸들입니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>테스트 요약</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>테스트</th>
+            <th>소스가 하는 일</th>
+            <th>.ck 기대/허용 결과</th>
+            <th>구현 관점</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>open-normal</code></td>
+            <td><code>open("sample.txt")</code> 호출</td>
+            <td>fd가 <code>2</code> 이상이면 정상 종료</td>
+            <td>일반 파일 fd는 stdin/stdout 이후 번호여야 함</td>
+          </tr>
+          <tr>
+            <td><code>open-twice</code></td>
+            <td>같은 파일을 두 번 open</td>
+            <td>두 fd 모두 <code>2</code> 이상이고 서로 달라야 함</td>
+            <td>같은 이름을 여러 번 열면 fd entry도 각각 따로 생겨야 함</td>
+          </tr>
+          <tr>
+            <td><code>open-missing</code></td>
+            <td>없는 파일 <code>"no-such-file"</code> open</td>
+            <td><code>-1</code> 반환 후 정상 종료</td>
+            <td><code>filesys_open()</code>이 <code>NULL</code>이면 fd table에 넣지 않음</td>
+          </tr>
+          <tr>
+            <td><code>open-empty</code></td>
+            <td>빈 문자열 <code>""</code> open</td>
+            <td><code>-1</code> 반환 후 정상 종료</td>
+            <td>빈 이름은 열 수 없어야 함</td>
+          </tr>
+          <tr>
+            <td><code>open-null</code></td>
+            <td><code>open(NULL)</code> 호출</td>
+            <td>정상 종료 또는 <code>exit(-1)</code> 허용</td>
+            <td>좋은 구현은 잘못된 포인터에서 <code>exit(-1)</code></td>
+          </tr>
+          <tr>
+            <td><code>open-bad-ptr</code></td>
+            <td><code>open((char *) 0x20101234)</code> 호출</td>
+            <td>정상 종료 또는 <code>exit(-1)</code> 허용</td>
+            <td>커널 panic은 금지. 포인터 검증이 필요함</td>
+          </tr>
+          <tr>
+            <td><code>open-boundary</code></td>
+            <td>파일 이름 문자열이 두 페이지 경계를 걸침</td>
+            <td><code>open "sample.txt"</code> 성공, 정상 종료</td>
+            <td>페이지 경계를 넘는 문자열도 모두 유효하면 허용해야 함</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>인자와 반환값</h2>
+      <ul>
+        <li><code>f-&gt;R.rdi</code>: 파일 이름 문자열 포인터</li>
+        <li><code>filesys_open(file_name)</code>: 성공 시 <code>struct file *</code>, 실패 시 <code>NULL</code></li>
+        <li><code>f-&gt;R.rax</code>: 성공 시 fd 번호, 실패 시 <code>-1</code></li>
+      </ul>
+      <div class="callout warn">
+        <strong>주의:</strong>
+        <code>filesys_open()</code>은 fd 번호를 만들어주지 않습니다.
+        fd 번호 배정, fd entry 생성, fd table 등록은 syscall 구현 쪽 책임입니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>fd table 관점</h2>
+      <p>
+        <code>open</code> 테스트들은 fd table이 제대로 만들어지는지 가장 먼저 확인합니다.
+        특히 <code>open-twice</code>는 같은 파일을 두 번 열어도 fd가 서로 달라야 한다는 점을 검사합니다.
+      </p>
+      <ul>
+        <li>fd 0은 stdin, fd 1은 stdout이므로 첫 일반 파일 fd는 최소 2입니다.</li>
+        <li>open 성공 시 동적 할당된 fd entry가 필요합니다.</li>
+        <li>fd entry에는 fd 번호와 <code>struct file *</code>이 저장되어야 합니다.</li>
+        <li>fd entry는 현재 thread의 <code>fd_table</code>에 매달려야 합니다.</li>
+        <li>open 실패 시 fd entry를 만들거나 table에 넣으면 안 됩니다.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>포인터 검증 포인트</h2>
+      <p>
+        <code>open-null</code>, <code>open-bad-ptr</code>, <code>open-boundary</code>는 파일 이름 문자열 포인터 검증과 관련됩니다.
+        <code>open-boundary</code>는 문자열 시작 주소만 보는 구현을 잡아낼 수 있습니다.
+      </p>
+      <ul>
+        <li>파일 이름 포인터가 <code>NULL</code>인지 확인합니다.</li>
+        <li>파일 이름 문자열이 유저 주소 범위인지 확인합니다.</li>
+        <li><code>'\0'</code>을 만날 때까지 모든 접근 주소가 유효한지 봐야 합니다.</li>
+        <li>페이지 경계를 넘는 문자열은 유효하면 성공해야 합니다.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>체크리스트</h2>
+      <ul>
+        <li><code>open</code>은 성공 시 fd 번호를 반환한다.</li>
+        <li>없는 파일과 빈 이름은 <code>-1</code>을 반환한다.</li>
+        <li>같은 파일을 두 번 열면 서로 다른 fd를 반환한다.</li>
+        <li>성공한 open만 fd table에 entry를 추가한다.</li>
+        <li>파일 이름 포인터 검증 실패는 커널 panic으로 이어지면 안 된다.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    Source notes: <code>pintos/tests/userprog/open-*.c</code>,
+    <code>open-*.ck</code>, <code>pintos/filesys/filesys.c</code>,
+    <code>pintos/lib/user/syscall.c</code>.
+  </footer>
+</body>
+</html>

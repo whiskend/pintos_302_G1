@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pintos FD Table Core Study</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --paper: #ffffff;
+      --ink: #1f2933;
+      --muted: #52606d;
+      --line: #d9e2ec;
+      --navy: #102a43;
+      --blue: #2563eb;
+      --teal: #0f766e;
+      --amber: #b7791f;
+      --red: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      background: var(--navy);
+      color: #f8fafc;
+      padding: 42px 24px 34px;
+    }
+
+    header .wrap,
+    main,
+    footer {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 5vw, 3.25rem);
+      line-height: 1.1;
+    }
+
+    .lead {
+      max-width: 860px;
+      margin: 0;
+      color: #dbeafe;
+      font-size: 1.06rem;
+    }
+
+    main {
+      padding: 28px 20px 52px;
+    }
+
+    section {
+      margin: 18px 0;
+      padding: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.42rem;
+      line-height: 1.25;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      font-size: 1.04rem;
+    }
+
+    p {
+      margin: 9px 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #edf2f7;
+      color: #1e3a8a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .callout {
+      padding: 14px 16px;
+      border-radius: 8px;
+      margin: 14px 0;
+    }
+
+    .note {
+      border-left: 4px solid var(--blue);
+      background: #eff6ff;
+    }
+
+    .ok {
+      border-left: 4px solid var(--teal);
+      background: #f0fdfa;
+    }
+
+    .warn {
+      border-left: 4px solid var(--amber);
+      background: #fffbeb;
+    }
+
+    .danger {
+      border-left: 4px solid var(--red);
+      background: #fff5f5;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 0.94rem;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf2f7;
+      color: #243b53;
+    }
+
+    ol,
+    ul {
+      padding-left: 22px;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .flow div {
+      min-height: 92px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .flow strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #0f172a;
+    }
+
+    .tag {
+      display: inline-block;
+      margin: 2px 4px 2px 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #075985;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    footer {
+      padding: 0 20px 42px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 820px) {
+      main {
+        padding: 18px 14px 42px;
+      }
+
+      section {
+        padding: 18px;
+      }
+
+      .grid,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>FD Table Core 학습 노트</h1>
+      <p class="lead">
+        Pintos Project 2의 B5를 구현하기 전에 fd table의 역할과 설계 선택지를 이해하기 위한 문서입니다.
+        이 문서는 정답 코드가 아니라, 스스로 구현 결정을 내리기 위한 개념 지도와 질문 목록입니다.
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>한 줄 개념</h2>
+      <p>
+        fd table은 프로세스가 가진 열린 파일들을 fd 숫자로 다시 찾기 위한 per-process 자료구조입니다.
+        fd는 파일 자체가 아니라 현재 프로세스 안에서만 의미 있는 핸들입니다.
+      </p>
+      <div class="callout note">
+        <strong>공부 목표:</strong>
+        B5는 <code>open</code>, <code>filesize</code>, <code>read</code>, <code>write</code>,
+        <code>close</code>, exit cleanup이 공통으로 의존하는 기반입니다.
+        이 문서를 읽은 뒤에는 "fd 숫자가 실제 파일 작업으로 이어지는 경로"를 말로 설명할 수 있어야 합니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>B5 작업 분해</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>세부 작업</th>
+            <th>비중</th>
+            <th>선행</th>
+            <th>공부 질문</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>B5-A</code></td>
+            <td>fd entry / open file object 구조 설계</td>
+            <td>25%</td>
+            <td>없음</td>
+            <td>fd 숫자로 열린 파일을 다시 찾으려면 무엇을 기억해야 할까?</td>
+          </tr>
+          <tr>
+            <td><code>B5-B</code></td>
+            <td>stdin/stdout 기본 entry</td>
+            <td>10%</td>
+            <td><code>B5-A</code></td>
+            <td>fd 0과 1을 일반 파일과 같은 방식으로 다룰까?</td>
+          </tr>
+          <tr>
+            <td><code>B5-C</code></td>
+            <td>fd 번호 할당 정책</td>
+            <td>15%</td>
+            <td><code>B5-A</code></td>
+            <td>새 파일에는 어떤 fd 숫자를 줄까?</td>
+          </tr>
+          <tr>
+            <td><code>B5-D</code></td>
+            <td>fd lookup</td>
+            <td>15%</td>
+            <td><code>B5-A</code>, <code>B5-C</code></td>
+            <td>없는 fd를 만났을 때 어디서 막아야 할까?</td>
+          </tr>
+          <tr>
+            <td><code>B5-E</code></td>
+            <td>fd close/remove</td>
+            <td>15%</td>
+            <td><code>B5-D</code></td>
+            <td>fd를 닫는다는 것은 table과 file object에 각각 무슨 뜻일까?</td>
+          </tr>
+          <tr>
+            <td><code>B5-F</code></td>
+            <td>exit 시 fd 전체 cleanup</td>
+            <td>10%</td>
+            <td><code>B5-E</code>, <code>B3-C</code></td>
+            <td>프로세스가 close를 빼먹고 종료하면 누가 정리할까?</td>
+          </tr>
+          <tr>
+            <td><code>B5-G</code></td>
+            <td>dup2 대비 shared/ref 구조</td>
+            <td>10%</td>
+            <td><code>B5-A</code>, <code>B5-E</code></td>
+            <td>fd 여러 개가 같은 열린 파일을 가리키면 소유권은 어디에 있을까?</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>fd는 파일이 아니다</h2>
+      <p>
+        유저 프로그램이 syscall에 넘기는 것은 파일 객체가 아니라 작은 정수인 fd입니다.
+        커널은 그 정수를 현재 프로세스의 fd table에서 해석해야 합니다.
+      </p>
+      <div class="flow">
+        <div><strong>1. 유저 요청</strong>유저 프로그램이 fd 숫자를 syscall 인자로 넘김</div>
+        <div><strong>2. 현재 프로세스</strong>커널은 지금 실행 중인 프로세스의 table만 봄</div>
+        <div><strong>3. fd 해석</strong>fd 숫자가 열린 파일 정보와 연결되는지 확인</div>
+        <div><strong>4. 파일 작업</strong>유효할 때만 실제 file API로 넘어감</div>
+      </div>
+      <div class="callout warn">
+        <strong>생각해보기:</strong>
+        같은 fd 숫자라도 프로세스가 다르면 왜 다른 파일을 가리킬 수 있을까요?
+      </div>
+    </section>
+
+    <section>
+      <h2>B5-A. 구조 설계</h2>
+      <p>
+        fd entry는 fd 숫자와 열린 파일 사이의 연결을 표현합니다.
+        open file object는 "열린 파일 상태"를 fd entry와 분리해서 생각하기 위한 개념입니다.
+      </p>
+      <div class="grid">
+        <div>
+          <h3>fd entry를 볼 때</h3>
+          <ul>
+            <li>fd 숫자를 기억해야 하는가?</li>
+            <li>실제 파일을 직접 가리킬 것인가?</li>
+            <li>table 안에서 entry를 찾기 위한 연결 정보가 필요한가?</li>
+            <li>entry의 생명주기는 언제 시작하고 끝나는가?</li>
+          </ul>
+        </div>
+        <div>
+          <h3>open file object를 볼 때</h3>
+          <ul>
+            <li>열린 파일의 실제 소유권을 어디에 둘 것인가?</li>
+            <li>여러 fd가 같은 열린 파일을 공유할 수 있는가?</li>
+            <li>마지막 참조가 사라졌다는 것을 어떻게 알 수 있는가?</li>
+            <li>file position 공유가 필요한 상황은 무엇인가?</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout note">
+        <strong>핵심 구분:</strong>
+        fd entry는 "번호와 연결"에 가깝고, open file object는 "열린 파일 상태와 소유권"에 가깝습니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>B5-B. stdin/stdout</h2>
+      <p>
+        fd 0과 1은 일반 파일이 아니라 예약된 표준 입출력입니다.
+        일반 파일 fd와 같은 table lookup 흐름에 넣을지, syscall에서 특수 처리할지는 설계 선택입니다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>fd</th>
+            <th>의미</th>
+            <th>read 관점</th>
+            <th>write 관점</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>0</code></td>
+            <td>stdin</td>
+            <td>입력 장치에서 읽는 특수 fd</td>
+            <td>일반적으로 잘못된 방향</td>
+          </tr>
+          <tr>
+            <td><code>1</code></td>
+            <td>stdout</td>
+            <td>일반적으로 잘못된 방향</td>
+            <td>콘솔 출력으로 이어지는 특수 fd</td>
+          </tr>
+          <tr>
+            <td><code>2+</code></td>
+            <td>일반 파일</td>
+            <td>fd table lookup 필요</td>
+            <td>fd table lookup 필요</td>
+          </tr>
+        </tbody>
+      </table>
+      <ul>
+        <li><code>open()</code>이 fd 0이나 1을 반환하면 왜 곤란한지 설명해봅니다.</li>
+        <li><code>read(1)</code>과 <code>write(0)</code>의 실패 정책을 일관되게 정해야 합니다.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>B5-C. fd 할당 정책</h2>
+      <p>
+        fd allocation은 새로 열린 파일에 어떤 fd 숫자를 줄지 정하는 규칙입니다.
+        쉬운 정책과 더 일반적인 정책 사이의 장단점을 이해해야 합니다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>정책</th>
+            <th>아이디어</th>
+            <th>좋은 점</th>
+            <th>고민할 점</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>단순 증가</td>
+            <td>다음 후보 fd를 계속 증가시킴</td>
+            <td>이해와 구현이 쉽다</td>
+            <td>닫힌 fd를 바로 재사용하지 않는다</td>
+          </tr>
+          <tr>
+            <td>빈 번호 재사용</td>
+            <td>사용 중이지 않은 작은 fd를 찾음</td>
+            <td>fd 숫자가 작게 유지된다</td>
+            <td>중복 확인과 탐색 규칙이 필요하다</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout ok">
+        <strong>스스로 정할 것:</strong>
+        어떤 정책을 고르든 fd 0과 1은 예약되어 있고, 일반 파일 fd는 2 이상이어야 합니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>B5-D. fd lookup</h2>
+      <p>
+        lookup은 fd 숫자가 현재 프로세스의 열린 파일과 연결되는지 확인하는 공통 관문입니다.
+        <code>filesize</code>, <code>read</code>, <code>write</code>, <code>close</code>가 같은 기준을 공유해야 합니다.
+      </p>
+      <ul>
+        <li>fd가 일반 파일 범위인가?</li>
+        <li>현재 프로세스의 fd table에 실제로 존재하는가?</li>
+        <li>존재하지 않는다면 syscall은 어떤 값이나 상태로 실패하는가?</li>
+        <li>lookup 실패가 실제 file API 호출로 흘러가지 않도록 어디에서 막을 것인가?</li>
+      </ul>
+      <div class="callout danger">
+        <strong>위험 신호:</strong>
+        invalid fd가 file API의 null 인자로 이어지면 커널 panic 가능성이 큽니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>B5-E. close/remove</h2>
+      <p>
+        fd를 닫는 일은 table에서 번호를 제거하는 일과 열린 파일 참조를 정리하는 일을 모두 포함합니다.
+        둘 중 하나만 하면 fd table 상태와 파일 객체 상태가 어긋납니다.
+      </p>
+      <div class="grid">
+        <div>
+          <h3>table 관점</h3>
+          <ul>
+            <li>entry가 더 이상 lookup되지 않아야 합니다.</li>
+            <li>같은 fd를 다시 닫아도 커널이 죽지 않아야 합니다.</li>
+            <li>entry 메모리 생명주기를 정해야 합니다.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>file 관점</h3>
+          <ul>
+            <li>파일 참조를 언제 내려놓을지 정해야 합니다.</li>
+            <li>shared 구조라면 마지막 참조인지 확인해야 합니다.</li>
+            <li>file system lock 정책과 맞아야 합니다.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>B5-F. exit cleanup</h2>
+      <p>
+        유저 프로그램이 열린 파일을 모두 닫고 종료한다고 기대하면 안 됩니다.
+        프로세스 종료 경로에서 남아 있는 fd 전체를 정리해야 합니다.
+      </p>
+      <ul>
+        <li>진짜 프로세스 종료 경로가 어디인지 확인합니다.</li>
+        <li>주소 공간 정리와 fd 정리의 순서를 생각합니다.</li>
+        <li>table을 순회하면서 entry를 제거할 때 안전한 순회 방식이 필요한지 봅니다.</li>
+        <li><code>exec</code> 중 cleanup과 <code>exit</code> cleanup을 구분해야 하는지 확인합니다.</li>
+        <li>실행 파일 write deny를 구현했다면 그 파일의 close 흐름도 같이 봅니다.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>B5-G. shared/ref 구조</h2>
+      <p>
+        <code>dup2</code>를 생각하면 fd table 설계에서 소유권 문제가 드러납니다.
+        fd 두 개가 같은 열린 파일을 가리킬 수 있다면, fd entry가 직접 파일을 소유하는 모델은 조심해야 합니다.
+      </p>
+      <div class="flow">
+        <div><strong>fd entry</strong>fd 숫자와 열린 파일 상태 사이의 연결</div>
+        <div><strong>open file</strong>실제 열린 파일 상태와 file position</div>
+        <div><strong>ref count</strong>그 상태를 가리키는 fd entry 수</div>
+        <div><strong>close 조건</strong>마지막 참조가 사라졌을 때 실제 파일 close</div>
+      </div>
+      <div class="callout warn">
+        <strong>생각해보기:</strong>
+        fd A와 fd B가 같은 열린 파일을 공유할 때, fd A만 닫으면 실제 파일을 닫아도 될까요?
+      </div>
+    </section>
+
+    <section>
+      <h2>read/write와의 연결</h2>
+      <p>
+        read/write 구현은 B5 위에 올라갑니다.
+        fd table은 "어떤 파일인가"를 해결하고, buffer validation은 "유저 메모리에 접근해도 되는가"를 해결합니다.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>관심사</th>
+            <th>담당하는 질문</th>
+            <th>관련 테스트</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>fd table</td>
+            <td>fd가 현재 프로세스의 열린 파일인가?</td>
+            <td>bad fd, normal read/write</td>
+          </tr>
+          <tr>
+            <td>stdin/stdout</td>
+            <td>예약 fd를 올바른 방향으로 쓰고 있는가?</td>
+            <td>read-stdout, write-stdin</td>
+          </tr>
+          <tr>
+            <td>buffer validation</td>
+            <td>유저가 넘긴 메모리 범위가 안전한가?</td>
+            <td>bad-ptr, boundary</td>
+          </tr>
+          <tr>
+            <td>return value</td>
+            <td>syscall 결과가 유저에게 정확히 돌아가는가?</td>
+            <td>zero, normal 계열</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>테스트 관점</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>테스트 그룹</th>
+            <th>B5와의 관계</th>
+            <th>확인할 개념</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>open-*</code></td>
+            <td>fd entry 생성과 번호 할당</td>
+            <td>일반 파일 fd가 2 이상인지, 실패가 안전한지</td>
+          </tr>
+          <tr>
+            <td><code>filesize-*</code></td>
+            <td>fd lookup 후 파일 정보 사용</td>
+            <td>없는 fd를 어떻게 처리하는지</td>
+          </tr>
+          <tr>
+            <td><code>close-*</code></td>
+            <td>lookup, remove, 파일 참조 해제</td>
+            <td>중복 close나 invalid fd에서 panic이 없는지</td>
+          </tr>
+          <tr>
+            <td><code>read-*</code></td>
+            <td>stdin 분기와 일반 fd lookup</td>
+            <td>fd 검증과 buffer 검증을 구분하는지</td>
+          </tr>
+          <tr>
+            <td><code>write-*</code></td>
+            <td>stdout 분기와 일반 fd lookup</td>
+            <td>예약 fd의 방향성과 반환값을 이해하는지</td>
+          </tr>
+          <tr>
+            <td>exit cleanup</td>
+            <td>남은 fd 전체 정리</td>
+            <td>명시적 close 없이 종료해도 리소스가 남지 않는지</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>자기 점검</h2>
+      <p>
+        <span class="tag">fd는 파일이 아니다</span>
+        <span class="tag">per-process</span>
+        <span class="tag">stdin/stdout</span>
+        <span class="tag">allocation</span>
+        <span class="tag">lookup</span>
+        <span class="tag">close/remove</span>
+        <span class="tag">exit cleanup</span>
+        <span class="tag">shared/ref</span>
+        <span class="tag">buffer validation</span>
+      </p>
+      <ul>
+        <li>fd table이 왜 프로세스별이어야 하는지 설명할 수 있다.</li>
+        <li>fd 0, fd 1, fd 2 이상의 차이를 설명할 수 있다.</li>
+        <li>fd allocation 정책 하나를 고르고 장단점을 말할 수 있다.</li>
+        <li>lookup 실패가 왜 커널 panic으로 이어지면 안 되는지 설명할 수 있다.</li>
+        <li>close가 table remove와 file 참조 해제를 모두 포함한다는 것을 이해한다.</li>
+        <li>exit cleanup이 필요한 이유를 설명할 수 있다.</li>
+        <li>shared/ref 구조가 왜 <code>dup2</code>와 관련 있는지 설명할 수 있다.</li>
+        <li>fd table 문제와 buffer validation 문제를 구분할 수 있다.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    Source notes: <code>threads/thread.h</code>, <code>userprog/syscall.c</code>,
+    <code>userprog/process.c</code>, <code>filesys/file.h</code>,
+    <code>pintos/tests/userprog/open-*.c</code>, <code>close-*.c</code>,
+    <code>read-*.c</code>, <code>write-*.c</code>.
+  </footer>
+</body>
+</html>

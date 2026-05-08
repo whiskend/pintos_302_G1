@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pintos Argument Parsing Study</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #52606d;
+      --line: #d9e2ec;
+      --paper: #ffffff;
+      --soft: #f5f7fa;
+      --blue: #2563eb;
+      --green: #0f766e;
+      --red: #b42318;
+      --amber: #b7791f;
+      --code: #172033;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--soft);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      background: #111827;
+      color: #f9fafb;
+      padding: 44px 24px 36px;
+    }
+
+    header .wrap,
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      line-height: 1.1;
+    }
+
+    .lead {
+      max-width: 780px;
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 1.06rem;
+    }
+
+    main {
+      padding: 28px 20px 56px;
+    }
+
+    section {
+      margin: 20px 0;
+      padding: 24px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 1.45rem;
+      line-height: 1.25;
+    }
+
+    h3 {
+      margin: 22px 0 8px;
+      font-size: 1.04rem;
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #edf2f7;
+      color: #1e3a8a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.94em;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 12px 0 0;
+      padding: 16px;
+      border-radius: 8px;
+      background: var(--code);
+      color: #e5e7eb;
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .note {
+      border-left: 4px solid var(--blue);
+      background: #eff6ff;
+    }
+
+    .warn {
+      border-left: 4px solid var(--amber);
+      background: #fffbeb;
+    }
+
+    .danger {
+      border-left: 4px solid var(--red);
+      background: #fff5f5;
+    }
+
+    .ok {
+      border-left: 4px solid var(--green);
+      background: #f0fdfa;
+    }
+
+    .callout {
+      padding: 14px 16px;
+      border-radius: 8px;
+      margin: 14px 0;
+    }
+
+    ol,
+    ul {
+      padding-left: 22px;
+    }
+
+    li + li {
+      margin-top: 7px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 0.95rem;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #edf2f7;
+      color: #243b53;
+    }
+
+    .stack {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+      max-width: 620px;
+    }
+
+    .stack div {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f8fafc;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92rem;
+    }
+
+    .stack .top {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+
+    .stack .bottom {
+      background: #dcfce7;
+      border-color: #86efac;
+    }
+
+    .tag {
+      display: inline-block;
+      margin: 2px 4px 2px 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #075985;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .checklist label {
+      display: block;
+      margin: 8px 0;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f8fafc;
+    }
+
+    .checklist input {
+      margin-right: 8px;
+    }
+
+    footer {
+      max-width: 1120px;
+      margin: 0 auto 48px;
+      padding: 0 20px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 760px) {
+      header {
+        padding: 32px 18px 28px;
+      }
+
+      main {
+        padding: 18px 14px 42px;
+      }
+
+      section {
+        padding: 18px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>Argument Parsing</h1>
+      <p class="lead">
+        Pintos user program이 시작될 때 커맨드라인 문자열을 잘라서
+        <code>argc</code>, <code>argv</code>, 사용자 스택으로 넘겨주는 작업을 정리한 공부 노트입니다.
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>한 줄 개념</h2>
+      <p>
+        Argument parsing은 커널이 받은 문자열, 예를 들면
+        <code>"args-multiple some arguments for you!"</code>를 프로그램 이름과 인자로 나누고,
+        새 유저 프로세스의 초기 스택을 C 프로그램의 <code>main(int argc, char *argv[])</code>가 기대하는 모양으로 만드는 일입니다.
+      </p>
+      <div class="callout note">
+        <strong>핵심 목표:</strong>
+        유저 프로그램이 시작하자마자 <code>argv[0]</code>은 실행 파일 이름,
+        <code>argv[1]</code>부터는 인자 문자열, <code>argv[argc]</code>는 <code>NULL</code>을 읽을 수 있어야 합니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>어디에서 구현하나</h2>
+      <div class="grid">
+        <div>
+          <h3>관련 파일</h3>
+          <ul>
+            <li><code>pintos/userprog/process.c</code></li>
+            <li><code>process_exec()</code>: 커맨드라인 문자열을 받고 <code>load()</code> 호출</li>
+            <li><code>load()</code>: 실행 파일 로드 후 <code>if_-&gt;rip</code>, <code>if_-&gt;rsp</code> 설정</li>
+            <li><code>setup_stack()</code>: 유저 스택으로 쓸 4KB 페이지 하나를 만들고 <code>if_-&gt;rsp</code>를 맨 위로 설정</li>
+          </ul>
+        </div>
+        <div>
+          <h3>현재 코드 흐름</h3>
+          <pre><code>process_exec(f_name)
+  - file_name = f_name
+  - process_cleanup()
+  - load(file_name, &amp;_if)
+      - filesys_open(file_name)
+      - setup_stack(&amp;_if)
+      - if_-&gt;rip = ehdr.e_entry
+      - TODO: argument passing
+  - do_iret(&amp;_if)</code></pre>
+        </div>
+      </div>
+      <div class="callout warn">
+        <strong>주의:</strong>
+        <code>filesys_open()</code>에는 전체 문자열이 아니라 실행 파일 이름만 들어가야 합니다.
+        <code>"args-single onearg"</code> 그대로 열면 그런 이름의 파일이 없어서 로드가 실패합니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>유저 스택이 뭐야?</h2>
+      <p>
+        유저 스택은 유저 프로그램이 함수 호출, 지역 변수, 함수 인자, 반환 주소 등을 저장하려고 쓰는 메모리 공간입니다.
+        Pintos에서 커널은 새 유저 프로그램을 실행하기 직전에 이 스택을 직접 만들어 줍니다.
+      </p>
+      <p>
+        예를 들어 유저 프로그램 <code>args.c</code>의 <code>main(int argc, char *argv[])</code>가 시작될 때,
+        <code>argc</code>와 <code>argv</code>는 원래부터 마법처럼 존재하는 값이 아닙니다.
+        커널이 유저 스택에 문자열과 포인터 배열을 배치하고, CPU 레지스터에 시작 인자를 넣어줘야
+        유저 프로그램이 <code>argv[0]</code>, <code>argv[1]</code>을 읽을 수 있습니다.
+      </p>
+      <div class="grid">
+        <div>
+          <h3>커널 스택</h3>
+          <ul>
+            <li>커널 코드가 쓰는 스택입니다.</li>
+            <li><code>load()</code> 안의 지역 변수 <code>char *argv[10]</code> 같은 값이 여기에 놓입니다.</li>
+            <li>유저 프로그램은 여기에 접근하면 안 됩니다.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>유저 스택</h3>
+          <ul>
+            <li>유저 프로그램이 실행 중에 쓰는 스택입니다.</li>
+            <li><code>setup_stack()</code>이 <code>USER_STACK - PGSIZE</code>부터 <code>USER_STACK</code>까지 4KB를 매핑합니다.</li>
+            <li><code>args.c</code>가 읽을 <code>argv</code> 문자열과 포인터는 여기에 있어야 합니다.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout danger">
+        <strong>중요:</strong>
+        <code>if_-&gt;R.rsi = argv</code>처럼 커널 지역 배열 주소를 넘기면 안 됩니다.
+        그 주소는 커널 스택 주소라서 유저 프로그램 입장에서는 올바른 <code>argv</code>가 아닙니다.
+        <code>if_-&gt;R.rsi</code>에는 유저 스택 안에 만든 <code>argv</code> 배열의 주소를 넣어야 합니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>초기 스택 모양</h2>
+      <p>
+        x86-64 Pintos에서 유저 스택은 높은 주소 <code>USER_STACK</code> 근처에서 시작해 아래 방향으로 자랍니다.
+        구현할 때는 문자열을 먼저 아래쪽에 복사하고, 그 문자열들의 주소를 다시 스택에 쌓습니다.
+      </p>
+      <div class="stack" aria-label="user stack layout">
+        <div class="top"><span>높은 주소</span><span>USER_STACK</span></div>
+        <div><span>argument strings</span><span>"you!\0", "for\0", ...</span></div>
+        <div><span>word align padding</span><span>8-byte 정렬</span></div>
+        <div><span>argv[argc]</span><span>NULL sentinel</span></div>
+        <div><span>argv pointers</span><span>&amp;"args", &amp;"onearg"</span></div>
+        <div><span>fake return address</span><span>0</span></div>
+        <div><span>registers</span><span>RDI = argc, RSI = argv</span></div>
+        <div class="bottom"><span>낮은 주소</span><span>최종 if_-&gt;rsp</span></div>
+      </div>
+      <div class="callout ok">
+        <strong>64비트 포인트:</strong>
+        이 프로젝트의 user program 시작 규약은 보통 <code>argc</code>를 <code>if_-&gt;R.rdi</code>,
+        <code>argv</code>를 <code>if_-&gt;R.rsi</code>에 넣고, <code>if_-&gt;rsp</code>는 8바이트 정렬 상태로 맞춥니다.
+        여기서 <code>if_</code>는 <code>struct intr_frame *</code>, 즉 포인터이므로 코드에서는 <code>.</code>이 아니라
+        <code>-&gt;</code>로 접근합니다. 만약 지역 변수 <code>struct intr_frame _if</code>에 직접 접근할 때만
+        <code>_if.rsp</code>처럼 <code>.</code>을 씁니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>구현 순서</h2>
+      <div class="callout note">
+        <strong>용어 먼저:</strong>
+        커맨드라인 원본은 Pintos가 받은 전체 문자열입니다. 예를 들면
+        <code>"args-single onearg"</code>입니다. 버퍼는 그 문자열을 안전하게 복사해 둔 임시 메모리입니다.
+        원본 페이지는 보통 <code>palloc_get_page()</code>로 받은 4KB짜리 커널 메모리 한 장을 뜻합니다.
+        이 페이지는 <code>process_exec()</code>나 <code>load()</code>가 끝나면서 해제될 수 있으므로,
+        유저 프로그램이 계속 읽어야 하는 인자 문자열은 반드시 유저 스택 쪽에 다시 복사해야 합니다.
+      </div>
+      <ol>
+        <li>커맨드라인 원본, 예를 들면 <code>"args-single onearg"</code>를 별도 버퍼에 복사합니다. 토큰을 자르는 과정에서 문자열 내용이 바뀔 수 있기 때문입니다.</li>
+        <li><code>strtok_r()</code> 같은 재진입 가능한 토크나이저로 공백 기준 토큰을 나눕니다.</li>
+        <li>첫 토큰만 실행 파일 이름으로 사용해서 <code>filesys_open()</code>에 넘깁니다.</li>
+        <li>스택 페이지, 즉 유저 프로세스의 스택으로 매핑된 4KB 메모리 한 장을 준비합니다. 이 작업은 보통 <code>setup_stack()</code>이 합니다.</li>
+        <li>각 인자 문자열을 마지막 인자부터 스택 페이지 안으로 복사합니다. 예를 들면 <code>"onearg\0"</code>, <code>"args-single\0"</code> 순서로 아래쪽 주소에 넣습니다.</li>
+        <li>문자열 주소들을 배열에 저장해두고, <code>argv[argc] = NULL</code>부터 스택에 쌓습니다.</li>
+        <li><code>argv[0]</code>부터 접근 가능하도록 포인터들을 스택에 배치합니다.</li>
+        <li><code>if_-&gt;R.rdi = argc</code>, <code>if_-&gt;R.rsi = argv 주소</code>, <code>if_-&gt;rsp = 최종 스택 포인터</code>를 설정합니다. <code>if_</code>가 포인터라서 <code>-&gt;</code>를 씁니다.</li>
+      </ol>
+      <div class="callout danger">
+        <strong>자주 터지는 부분:</strong>
+        공백이 두 개 이상일 때 빈 문자열을 인자로 세면 안 됩니다.
+        <code>args-dbl-space</code>는 이 실수를 잡는 테스트입니다.
+      </div>
+    </section>
+
+    <section>
+      <h2>테스트가 보는 것</h2>
+      <p>
+        모든 <code>args-*</code> 테스트는 같은 소스인 <code>pintos/tests/userprog/args.c</code>를 씁니다.
+        이 프로그램은 <code>argc</code>, <code>argv[i]</code>, <code>argv[argc] == NULL</code>, 그리고 <code>argv</code> 포인터 정렬을 확인합니다.
+      </p>
+      <pre><code>if (((unsigned long long) argv &amp; 7) != 0)
+  msg("argv and stack must be word-aligned, actually %p", argv);
+
+msg("argc = %d", argc);
+for (i = 0; i &lt;= argc; i++)
+  if (argv[i] != NULL)
+    msg("argv[%d] = '%s'", i, argv[i]);
+  else
+    msg("argv[%d] = null", i);</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>테스트</th>
+            <th>입력 인자</th>
+            <th>기대 argc</th>
+            <th>핵심 확인</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>args-none</code></td>
+            <td>없음</td>
+            <td>1</td>
+            <td><code>argv[0] = "args-none"</code>, <code>argv[1] = NULL</code></td>
+          </tr>
+          <tr>
+            <td><code>args-single</code></td>
+            <td><code>onearg</code></td>
+            <td>2</td>
+            <td>프로그램 이름 + 인자 하나</td>
+          </tr>
+          <tr>
+            <td><code>args-multiple</code></td>
+            <td><code>some arguments for you!</code></td>
+            <td>5</td>
+            <td>여러 인자가 순서대로 보존되는지 확인</td>
+          </tr>
+          <tr>
+            <td><code>args-many</code></td>
+            <td><code>a b c ... v</code></td>
+            <td>23</td>
+            <td>인자가 많아도 누락 없이 스택에 올라가는지 확인</td>
+          </tr>
+          <tr>
+            <td><code>args-dbl-space</code></td>
+            <td><code>two&nbsp;&nbsp;spaces!</code></td>
+            <td>3</td>
+            <td>연속 공백을 빈 인자로 취급하지 않는지 확인</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>기대 출력 예시</h2>
+      <h3>args-multiple</h3>
+      <pre><code>(args) begin
+(args) argc = 5
+(args) argv[0] = 'args-multiple'
+(args) argv[1] = 'some'
+(args) argv[2] = 'arguments'
+(args) argv[3] = 'for'
+(args) argv[4] = 'you!'
+(args) argv[5] = null
+(args) end
+args-multiple: exit(0)</code></pre>
+
+      <h3>args-dbl-space</h3>
+      <pre><code>(args) begin
+(args) argc = 3
+(args) argv[0] = 'args-dbl-space'
+(args) argv[1] = 'two'
+(args) argv[2] = 'spaces!'
+(args) argv[3] = null
+(args) end
+args-dbl-space: exit(0)</code></pre>
+    </section>
+
+    <section>
+      <h2>스스로 점검하기</h2>
+      <div class="checklist">
+        <label><input type="checkbox"> 실행 파일 이름만 분리해서 <code>filesys_open()</code>에 넘긴다.</label>
+        <label><input type="checkbox"> <code>argv[0]</code>에 테스트 이름이 들어간다.</label>
+        <label><input type="checkbox"> <code>argc</code>는 프로그램 이름까지 포함한다.</label>
+        <label><input type="checkbox"> <code>argv[argc]</code>는 반드시 <code>NULL</code>이다.</label>
+        <label><input type="checkbox"> <code>argv</code> 주소와 스택 포인터가 8바이트 정렬 조건을 만족한다.</label>
+        <label><input type="checkbox"> 연속 공백은 무시되고 빈 문자열 인자가 생기지 않는다.</label>
+        <label><input type="checkbox"> <code>process_exec()</code> 이후 커맨드라인 원본 페이지를 해제해도 유저 스택에 복사된 인자 문자열은 살아 있다.</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>테스트 실행 메모</h2>
+      <p>
+        Pintos 빌드 환경에서 userprog 테스트를 돌릴 때는 보통 <code>pintos/userprog/build</code> 아래에서 개별 테스트를 실행합니다.
+        팀 환경의 Makefile 타깃 이름이 다를 수 있으니, 먼저 기존 프로젝트 안내를 확인하세요.
+      </p>
+      <pre><code>cd pintos/userprog
+make check TESTS=tests/userprog/args-none
+make check TESTS=tests/userprog/args-single
+make check TESTS=tests/userprog/args-multiple
+make check TESTS=tests/userprog/args-many
+make check TESTS=tests/userprog/args-dbl-space</code></pre>
+      <p>
+        통과 기준은 단순합니다. <span class="tag">argc 정확성</span>
+        <span class="tag">argv 순서</span>
+        <span class="tag">NULL sentinel</span>
+        <span class="tag">8-byte alignment</span>
+        <span class="tag">정상 exit</span>
+      </p>
+    </section>
+  </main>
+
+  <footer>
+    Source notes: <code>pintos/tests/userprog/args.c</code>,
+    <code>args-*.ck</code>, <code>pintos/tests/userprog/Make.tests</code>,
+    <code>pintos/userprog/process.c</code>.
+  </footer>
+</body>
+</html>
