@@ -228,6 +228,9 @@ Temporary Items
 # Built Visual Studio Code Extensions
 *.vsix
 
+### Pintos VSCode Test History ###
+pintos-test-history.json
+
 ### VisualStudioCode Patch ###
 # Ignore all local history of files
 .history
