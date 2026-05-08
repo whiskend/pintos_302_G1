@@ -2,6 +2,9 @@
     "name": "pintos-dev",
     "dockerFile": "Dockerfile",
     "remoteUser": "jungle",
+    "remoteEnv": {
+        "PATH": "/workspaces/${localWorkspaceFolderBasename}/pintos/utils:${containerEnv:PATH}"
+    },
     "customizations": {
         "vscode": {
             "extensions": [
