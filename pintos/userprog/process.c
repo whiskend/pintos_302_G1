@@ -330,7 +330,9 @@ __do_fork (void *aux) {
 				e = list_begin(fd_table);
 				struct fd_entry *entry = list_entry(e, struct fd_entry, file_elem);
 				list_remove(e);
-				file_close (entry->file);
+				if (is_file_fd (entry))
+					file_close (entry->sfd->file);
+				free (entry->sfd);
 				free(entry);
 			}
 			cs->tid = TID_ERROR;
