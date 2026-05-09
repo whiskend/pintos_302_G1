@@ -9,6 +9,7 @@ void
 vm_init (void) {
 	vm_anon_init ();
 	vm_file_init ();
+	list_init(&frame_table);
 #ifdef EFILESYS  /* 프로젝트 4용 */
 	pagecache_init ();
 #endif
@@ -52,6 +53,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		 * TODO: uninit_new 호출 뒤 필드를 수정해야 합니다. */
 
 		/* TODO: 페이지를 spt에 삽입합니다. */
+		//if(spt_insert_page(&spt))
 	}
 err:
 	return false;
@@ -108,6 +110,7 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채웁니다. */
+	list_push_back(&frame_table, frame->e);
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
