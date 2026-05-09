@@ -57,6 +57,14 @@ struct page {
 		struct page_cache page_cache;
 #endif
 	};
+
+	// SPT를 순회하기 위한 해시 자료구조
+	struct hash_elem *e;
+	
+	// 첫 페이지 폴트가 되어 있는지 확인하는 불 변수
+	// 읽기만 가능한 곳에 쓰기를 하면 비정상적인 페이지 폴트
+	// 해당 사항은 페이지 초기화 시 설정
+	bool writable;
 };
 
 /* "frame"의 표현입니다. */
@@ -84,6 +92,9 @@ struct page_operations {
  * 이 구조체에 대해 특정 설계를 강제하지 않습니다.
  * 모든 설계는 직접 정하면 됩니다. */
 struct supplemental_page_table {
+	// 시작 주소만 있고 실행 내역이 없을 때, 진짜 페이지 폴트인지 여부 체크
+	// 스왑 아웃 쪽에 있는지? 레이지 로딩을 해야하는지? 아예 안올라와 있는지?
+	// 스왑 아웃에 있으면 스왑 인, 
 };
 
 #include "threads/thread.h"
