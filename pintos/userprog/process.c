@@ -798,7 +798,7 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 	return true;
 }
 
-#ifndef VM
+#ifdef VM
 /* Codes of this block will be ONLY USED DURING project 2.
  * If you want to implement the function for whole project 2, implement it
  * outside of #ifndef macro. */
