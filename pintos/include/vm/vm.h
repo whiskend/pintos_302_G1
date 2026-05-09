@@ -2,6 +2,7 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "threads/synch.h"
 
 enum vm_type {
 	/* 초기화되지 않은 페이지 */
