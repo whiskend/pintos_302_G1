@@ -76,6 +76,13 @@ struct frame {
 	struct list_elem *e;
 };
 
+struct lazy_aux {
+	struct file *file;
+	off_t offset;
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
+};
+
 /* 페이지 연산을 위한 함수 테이블입니다.
  * 이는 C에서 "인터페이스"를 구현하는 한 가지 방법입니다.
  * "메서드" 테이블을 구조체 멤버에 넣고 필요할 때마다 호출합니다. */
