@@ -110,7 +110,7 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채웁니다. */
-
+	frame = palloc_get_page(PAL_USER);
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
@@ -169,9 +169,26 @@ vm_do_claim_page (struct page *page) {
 	return swap_in (page, frame->kva);
 }
 
+static bool hash_va_less(const struct hash_elem *a,
+		const struct hash_elem *b,
+		void *aux)
+{
+	struct page *page_a = hash_entry(a, struct page, elem);
+	struct page *page_b = hash_entry(b, struct page, elem);
+
+	return page_a->va > page_b->va;
+}
+
+static uint64_t hash_func(const struct hash_elem *e, void *aux) {
+	const struct page *p = hash_entry (e, struct page, elem);
+	return hash_bytes (&p->va, sizeof p->va);
+}
+
 /* 새 보조 페이지 테이블을 초기화합니다. */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_init (struct supplemental_page_table *spt) {
+	int suc = hash_init(spt->pages, hash_func, hash_va_less, NULL);
+	ASSERT(suc);
 }
 
 /* 보조 페이지 테이블을 src에서 dst로 복사합니다. */
