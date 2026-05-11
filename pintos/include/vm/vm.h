@@ -72,7 +72,7 @@ struct page {
 	};
 
 	// SPT를 순회하기 위한 해시 자료구조
-	struct hash_elem elem;
+	struct hash_elem hash_elem;
 	
 	// 첫 페이지 폴트가 되어 있는지 확인하는 불 변수
 	// 읽기만 가능한 곳에 쓰기를 하면 비정상적인 페이지 폴트
@@ -112,7 +112,7 @@ struct supplemental_page_table {
 	// 스왑 아웃 쪽에 있는지? 레이지 로딩을 해야하는지? 아예 안올라와 있는지?
 	// 스왑 아웃에 있으면 스왑 인
 	// 해시 테이블
-	struct hash *pages;
+	struct hash *hash_pages;
 };
 
 #include "threads/thread.h"
