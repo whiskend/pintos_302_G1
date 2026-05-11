@@ -1,3 +1,24 @@
+/* 
+vm_claim_page() -> 주소 기준 claim 요청 진입점
+
+spt_find_page() -> 주소에 해당하는 page metadata 찾기
+
+vm_do_claim_page() -> claim 실제 처리 총괄
+
+vm_get_frame() -> 빈 frame 준비
+
+palloc_get_page(PAL_USER) ->> user pool에서 실제 4KB 메모리 할당
+
+frame table insert -> 확보한 frame을 전역 관리 목록에 등록 -> 헬퍼로 빼야할듯? remove도..
+
+page <-> frame 연결 -> 가상 page와 실제 frame 관계 확정
+
+pml4_set_page() -> CPU 번역표에 매핑 추가
+
+swap_in() -> frame에 page 내용 채우기
+
+rollback -> 실패 시 원상복구
+*/
 /* vm.c: 가상 메모리 객체를 위한 일반 인터페이스. */
 
 #include "threads/malloc.h"
@@ -9,12 +30,14 @@ void
 vm_init (void) {
 	vm_anon_init ();
 	vm_file_init ();
+	list_init(&frame_table);
 #ifdef EFILESYS  /* 프로젝트 4용 */
 	pagecache_init ();
 #endif
 	register_inspect_intr ();
 	/* 위 줄들은 수정하지 마세요. */
 	/* TODO: 여기에 코드를 작성합니다. */
+	// 프레임 테이블이랑 락 초기화 필요.
 }
 
 /* 페이지의 타입을 얻습니다. 페이지가 초기화된 뒤의 타입을 알고 싶을 때 유용합니다.
@@ -52,6 +75,7 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		 * TODO: uninit_new 호출 뒤 필드를 수정해야 합니다. */
 
 		/* TODO: 페이지를 spt에 삽입합니다. */
+		//if(spt_insert_page(&spt))
 	}
 err:
 	return false;
@@ -108,6 +132,16 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채웁니다. */
+	
+	/* 
+    - palloc_get_page(PAL_USER)로 실제 페이지 1개 확보
+    - 실패하면 지금 단계에서는 NULL 반환 또는 이후 eviction 자리로 연결
+    - frame 메타데이터를 malloc으로 할당
+    - frame->kva 설정
+    - frame->page = NULL 초기화
+    - frame table에 삽입
+    - 반환
+	*/
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -149,6 +183,12 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채웁니다. */
+	/* 
+	- va를 pg_round_down으로 page boundary에 맞춘다
+    - 현재 thread의 spt에서 spt_find_page()로 page를 찾는다
+    - 없으면 false 반환
+    - 있으면 vm_do_claim_page(page) 호출
+	*/
 
 	return vm_do_claim_page (page);
 }
@@ -163,7 +203,7 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */
-
+	// pml4_set_page 함수 사용해서 매핑 추가
 	return swap_in (page, frame->kva);
 }
 
