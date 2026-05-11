@@ -7,53 +7,50 @@
 
 #include "threads/loader.h"
 
-/* Functions and macros for working with virtual addresses.
+/* 가상 주소를 다루는 함수와 매크로입니다.
  *
- * See pte.h for functions and macros specifically for x86
- * hardware page tables. */
+ * x86 하드웨어 페이지 테이블에 특화된 함수와 매크로는 pte.h를 참고하세요. */
 
 #define BITMASK(SHIFT, CNT) (((1ul << (CNT)) - 1) << (SHIFT))
 
-/* Page offset (bits 0:12). */
-#define PGSHIFT 0                          /* Index of first offset bit. */
-#define PGBITS  12                         /* Number of offset bits. */
-#define PGSIZE  (1 << PGBITS)              /* Bytes in a page. */
-#define PGMASK  BITMASK(PGSHIFT, PGBITS)   /* Page offset bits (0:12). */
+/* 페이지 오프셋입니다. (0:12 비트) */
+#define PGSHIFT 0                          /* 첫 오프셋 비트의 인덱스입니다. */
+#define PGBITS  12                         /* 오프셋 비트 수입니다. */
+#define PGSIZE  (1 << PGBITS)              /* 한 페이지의 바이트 수입니다. */
+#define PGMASK  BITMASK(PGSHIFT, PGBITS)   /* 페이지 오프셋 비트입니다. (0:12) */
 
-/* Offset within a page. */
+/* 페이지 안에서의 오프셋입니다. */
 #define pg_ofs(va) ((uint64_t) (va) & PGMASK)
 
 #define pg_no(va) ((uint64_t) (va) >> PGBITS)
 
-/* Round up to nearest page boundary. */
+/* 가장 가까운 위쪽 페이지 경계로 올림합니다. */
 #define pg_round_up(va) ((void *) (((uint64_t) (va) + PGSIZE - 1) & ~PGMASK))
 
-/* Round down to nearest page boundary. */
+/* 가장 가까운 아래쪽 페이지 경계로 내림합니다. */
 #define pg_round_down(va) (void *) ((uint64_t) (va) & ~PGMASK)
 
-/* Kernel virtual address start : 0x8004000000 */
+/* 커널 가상 주소의 시작점입니다: 0x8004000000 */
 #define KERN_BASE LOADER_KERN_BASE
 
-/* User stack start */
+/* 사용자 스택의 시작점입니다. */
 #define USER_STACK 0x47480000
 
-/* Returns true if VADDR is a user virtual address. */
+/* VADDR이 사용자 가상 주소이면 true를 반환합니다. */
 #define is_user_vaddr(vaddr) (!is_kernel_vaddr((vaddr)))
 
-/* Returns true if VADDR is a kernel virtual address. */
+/* VADDR이 커널 가상 주소이면 true를 반환합니다. */
 #define is_kernel_vaddr(vaddr) ((uint64_t)(vaddr) >= KERN_BASE)
 
-// FIXME: add checking
-/* Returns kernel virtual address at which physical address PADDR
- *  is mapped. */
+// FIXME: 검사를 추가해야 합니다.
+/* 물리 주소 PADDR이 매핑된 커널 가상 주소를 반환합니다. */
 #define ptov(paddr) ((void *) (((uint64_t) paddr) + KERN_BASE))
 
-/* Returns physical address at which kernel virtual address VADDR
- * is mapped. */
+/* 커널 가상 주소 VADDR이 매핑된 물리 주소를 반환합니다. */
 #define vtop(vaddr) \
 ({ \
 	ASSERT(is_kernel_vaddr(vaddr)); \
 	((uint64_t) (vaddr) - (uint64_t) KERN_BASE);\
 })
 
-#endif /* threads/vaddr.h */
+#endif /* threads/vaddr.h 끝 */
