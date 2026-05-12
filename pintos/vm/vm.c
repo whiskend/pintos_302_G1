@@ -196,12 +196,16 @@ vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채웁니다. */
 	/* 
-	- va를 pg_round_down으로 page boundary에 맞춘다
+	- va를 pg_round_down으로 page boundary에 맞춘다 -> spt_find_page()에 되어있음.
     - 현재 thread의 spt에서 spt_find_page()로 page를 찾는다
     - 없으면 false 반환
     - 있으면 vm_do_claim_page(page) 호출
 	*/
-
+	page = spt_find_page(thread_current()->spt, va);
+	// 예외처리
+	if (page == NULL) {
+		return false;
+	}
 	return vm_do_claim_page (page);
 }
 
