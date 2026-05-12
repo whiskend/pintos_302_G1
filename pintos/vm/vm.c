@@ -237,6 +237,11 @@ vm_do_claim_page (struct page *page) {
 	struct thread *t = thread_current();
 	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable)){
 		pml4_clear_page(t->pml4, page->va);
+		// vm_dealloc_page..로 해줘야 할듯?
+		vm_dealloc_page(page);
+		// frame도 free해주고...
+		free(frame);
+		// page도...?
 		frame->page = NULL;
 		page->frame = NULL;
 		return false;
