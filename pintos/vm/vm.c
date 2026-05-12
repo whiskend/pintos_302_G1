@@ -64,14 +64,14 @@ err:
 /* spt에서 VA를 찾아 페이지를 반환합니다. 오류 시 NULL을 반환합니다. */
 struct page *
 spt_find_page (struct supplemental_page_table *spt, void *va) {
-	struct page *page = NULL;
+	struct page page;
 	/* TODO: 이 함수를 채웁니다. */
 	struct hash_elem *e;
-	va = pg_round_down(va);
-	page->va = va;
-	e = hash_find (spt->hash_pages, &page->hash_elem);
-	page = hash_entry(e, struct page, hash_elem);
-	return page;
+	page.va = pg_round_down(va);
+	e = hash_find (spt->hash_pages, &page.hash_elem);
+	if (e == NULL)
+		return NULL;
+	return hash_entry(e, struct page, hash_elem);
 }
 
 /* 검증 후 PAGE를 spt에 삽입합니다. */
@@ -83,7 +83,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 	//해당 가상 주소가 주어진 보조 페이지 테이블에 존재하지 않는지 확인해야함.
 	//hash_insert를 참고해보자.
 	//page의 hash_elem과 spt의 hash_elem 비교.
-	if(hash_insert(spt->hash_pages, &page->hash_elem) != NULL) {
+	if(hash_insert(spt->hash_pages, &page->hash_elem) == NULL) {
 		succ = true;
 	}
 	else {
