@@ -22,7 +22,6 @@ rollback -> 실패 시 원상복구
 /* vm.c: 가상 메모리 객체를 위한 일반 인터페이스. */
 
 #include "threads/malloc.h"
-#include "threads/mmu.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "threads/vaddr.h"
@@ -151,14 +150,7 @@ vm_get_frame (void) {
 	frame->kva = kva;
 	frame->page = NULL;
 
-	// 여기서 LOCK 해야 하나?
 	list_push_back(&frame_table, &frame->e);
-
-	frame->kva = palloc_get_page(PAL_USER);
-	frame->page = NULL;
-	list_push_back(&frame_table, frame->e);
-
-	
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -214,9 +206,6 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
-	
-	uint64_t *pml4 = ()->pml4;
-	pml4_set_page(pml4);
 
 	/* 링크를 설정합니다. */
 	frame->page = page;
