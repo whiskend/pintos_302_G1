@@ -207,7 +207,9 @@ static uint64_t hash_func(const struct hash_elem *e, void *aux) {
 /* 새 보조 페이지 테이블을 초기화합니다. */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
-	int suc = hash_init(spt->hash_pages, hash_func, hash_va_less, NULL);
+	spt->hash_pages = malloc(sizeof *spt->hash_pages);
+	ASSERT(spt->hash_pages != NULL);
+	bool suc = hash_init(spt->hash_pages, hash_func, hash_va_less, NULL);
 	ASSERT(suc);
 }
 
