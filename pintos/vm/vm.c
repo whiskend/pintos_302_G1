@@ -178,8 +178,12 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct page *page = NULL;
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
+	if (addr == NULL)
+			goto done;
 
-	return vm_do_claim_page (page, write);
+	return vm_do_claim_page (page);
+	done:
+		exit(-1);
 }
 
 /* 페이지를 해제합니다.
