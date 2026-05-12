@@ -33,6 +33,7 @@ vm_init (void) {
 	vm_anon_init ();
 	vm_file_init ();
 	list_init(&frame_table);
+	lock_init(&frame_table_lock);
 #ifdef EFILESYS  /* 프로젝트 4용 */
 	pagecache_init ();
 #endif
@@ -149,8 +150,9 @@ vm_get_frame (void) {
 	}
 	frame->kva = kva;
 	frame->page = NULL;
-
+	lock_acquire(&frame_table_lock);
 	list_push_back(&frame_table, &frame->e);
+	lock_release(&frame_table_lock);
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
