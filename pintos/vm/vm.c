@@ -53,8 +53,9 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: 페이지를 생성하고 VM 타입에 맞는 initializer를 가져온 뒤,
 		 * TODO: uninit_new를 호출하여 "uninit" 페이지 구조체를 생성합니다.
 		 * TODO: uninit_new 호출 뒤 필드를 수정해야 합니다. */
-
-		/* TODO: 페이지를 spt에 삽입합니다. */
+		struct page *page = malloc(sizeof page);
+		uninit_new(page, upage, init, type, aux, ())
+	/* TODO: 페이지를 spt에 삽입합니다. */
 		//if(spt_insert_page(&spt))
 	}
 err:
@@ -97,7 +98,6 @@ void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	//page내의 포인터들을 free 시켜줘야 함.
 	hash_delete(spt->hash_pages, &page->hash_elem);
-	free(page->va);
 	free(page->frame);
 	//이건 원래 있던 거.
 	vm_dealloc_page (page);
@@ -130,7 +130,6 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채웁니다. */
-	frame = palloc_get_page(PAL_USER);
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
