@@ -298,3 +298,9 @@ core
 
 # JetBrains IDE
 .idea/
+
+# Local VS Code settings
+pintos/.vscode/c_cpp_properties.json
+pintos/.vscode/launch.json
+pintos/.vscode/settings.json
+.vscode/settings.json

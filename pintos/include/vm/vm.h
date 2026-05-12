@@ -2,6 +2,8 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "threads/synch.h"
+#include "kernel/hash.h"
 
 enum vm_type {
 	/* 초기화되지 않은 페이지 */
@@ -36,6 +38,16 @@ struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
 
+struct list frame_table;
+
+// 페이지 별로 들어가는 보조 데이터(해제 해야되는 리소스 포함)
+struct lazy_aux {
+	struct file *file;
+	off_t offset;
+	uint32_t read_bytes;
+	uint32_t zero_bytes;
+};
+
 /* "page"의 표현입니다.
  * 이는 일종의 "부모 클래스"이며, uninit_page, file_page, anon_page,
  * 페이지 캐시(프로젝트 4)라는 네 가지 "자식 클래스"를 가집니다.
@@ -44,6 +56,7 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* 사용자 공간 기준 주소 */
 	struct frame *frame;   /* 프레임에 대한 역참조 */
+	struct lazy_aux aux;
 
 	/* 직접 구현할 부분 */
 
@@ -57,13 +70,24 @@ struct page {
 		struct page_cache page_cache;
 #endif
 	};
+
+	// SPT를 순회하기 위한 해시 자료구조
+	struct hash_elem hash_elem;
+	
+	// 첫 페이지 폴트가 되어 있는지 확인하는 불 변수
+	// 읽기만 가능한 곳에 쓰기를 하면 비정상적인 페이지 폴트
+	// 해당 사항은 페이지 초기화 시 설정
+	bool writable;
 };
 
 /* "frame"의 표현입니다. */
 struct frame {
 	void *kva;
 	struct page *page;
+	struct list_elem *e;
 };
+
+
 
 /* 페이지 연산을 위한 함수 테이블입니다.
  * 이는 C에서 "인터페이스"를 구현하는 한 가지 방법입니다.
@@ -84,6 +108,11 @@ struct page_operations {
  * 이 구조체에 대해 특정 설계를 강제하지 않습니다.
  * 모든 설계는 직접 정하면 됩니다. */
 struct supplemental_page_table {
+	// 시작 주소만 있고 실행 내역이 없을 때, 진짜 페이지 폴트인지 여부 체크
+	// 스왑 아웃 쪽에 있는지? 레이지 로딩을 해야하는지? 아예 안올라와 있는지?
+	// 스왑 아웃에 있으면 스왑 인
+	// 해시 테이블
+	struct hash *hash_pages;
 };
 
 #include "threads/thread.h"

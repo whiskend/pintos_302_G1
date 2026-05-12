@@ -3,12 +3,15 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "kernel/hash.h"
+#include "threads/vaddr.h"
 
 /* 각 서브시스템의 초기화 코드를 호출하여 가상 메모리 서브시스템을 초기화합니다. */
 void
 vm_init (void) {
 	vm_anon_init ();
 	vm_file_init ();
+	list_init(&frame_table);
 #ifdef EFILESYS  /* 프로젝트 4용 */
 	pagecache_init ();
 #endif
@@ -50,8 +53,10 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: 페이지를 생성하고 VM 타입에 맞는 initializer를 가져온 뒤,
 		 * TODO: uninit_new를 호출하여 "uninit" 페이지 구조체를 생성합니다.
 		 * TODO: uninit_new 호출 뒤 필드를 수정해야 합니다. */
-
-		/* TODO: 페이지를 spt에 삽입합니다. */
+		struct page *page = malloc(sizeof page);
+		uninit_new(page, upage, init, type, aux, ())
+	/* TODO: 페이지를 spt에 삽입합니다. */
+		//if(spt_insert_page(&spt))
 	}
 err:
 	return false;
@@ -59,25 +64,42 @@ err:
 
 /* spt에서 VA를 찾아 페이지를 반환합니다. 오류 시 NULL을 반환합니다. */
 struct page *
-spt_find_page (struct supplemental_page_table *spt UNUSED, void *va UNUSED) {
-	struct page *page = NULL;
+spt_find_page (struct supplemental_page_table *spt, void *va) {
+	struct page page;
 	/* TODO: 이 함수를 채웁니다. */
-
-	return page;
+	struct hash_elem *e;
+	page.va = pg_round_down(va);
+	e = hash_find (spt->hash_pages, &page.hash_elem);
+	if (e == NULL)
+		return NULL;
+	return hash_entry(e, struct page, hash_elem);
 }
 
 /* 검증 후 PAGE를 spt에 삽입합니다. */
 bool
-spt_insert_page (struct supplemental_page_table *spt UNUSED,
-		struct page *page UNUSED) {
-	int succ = false;
+spt_insert_page (struct supplemental_page_table *spt,
+		struct page *page) {
+	bool succ = false;
 	/* TODO: 이 함수를 채웁니다. */
-
+	//해당 가상 주소가 주어진 보조 페이지 테이블에 존재하지 않는지 확인해야함.
+	//hash_insert를 참고해보자.
+	//page의 hash_elem과 spt의 hash_elem 비교.
+	if(hash_insert(spt->hash_pages, &page->hash_elem) == NULL) {
+		succ = true;
+	}
+	else {
+		succ = false;
+	}
+	//hash_entry()
 	return succ;
 }
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
+	//page내의 포인터들을 free 시켜줘야 함.
+	hash_delete(spt->hash_pages, &page->hash_elem);
+	free(page->frame);
+	//이건 원래 있던 거.
 	vm_dealloc_page (page);
 	return true;
 }
@@ -108,7 +130,6 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채웁니다. */
-
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
@@ -167,9 +188,28 @@ vm_do_claim_page (struct page *page) {
 	return swap_in (page, frame->kva);
 }
 
+static bool hash_va_less(const struct hash_elem *a,
+		const struct hash_elem *b,
+		void *aux)
+{
+	struct page *page_a = hash_entry(a, struct page, hash_elem);
+	struct page *page_b = hash_entry(b, struct page, hash_elem);
+
+	return page_a->va > page_b->va;
+}
+
+static uint64_t hash_func(const struct hash_elem *e, void *aux) {
+	const struct page *p = hash_entry (e, struct page, hash_elem);
+	return hash_bytes (&p->va, sizeof p->va);
+}
+
 /* 새 보조 페이지 테이블을 초기화합니다. */
 void
-supplemental_page_table_init (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_init (struct supplemental_page_table *spt) {
+	spt->hash_pages = malloc(sizeof *spt->hash_pages);
+	ASSERT(spt->hash_pages != NULL);
+	bool suc = hash_init(spt->hash_pages, hash_func, hash_va_less, NULL);
+	ASSERT(suc);
 }
 
 /* 보조 페이지 테이블을 src에서 dst로 복사합니다. */
