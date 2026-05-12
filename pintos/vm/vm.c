@@ -237,9 +237,10 @@ vm_do_claim_page (struct page *page) {
 	struct thread *t = thread_current();
 	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable)){
 		pml4_clear_page(t->pml4, page->va);
-		exit(-1);
+		frame->page = NULL;
+		page->frame = NULL;
+		return false;
 	}
-		
 	
 	return swap_in (page, frame->kva);
 }
