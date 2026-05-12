@@ -22,6 +22,7 @@ rollback -> 실패 시 원상복구
 /* vm.c: 가상 메모리 객체를 위한 일반 인터페이스. */
 
 #include "threads/malloc.h"
+#include "threads/mmu.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "threads/vaddr.h"
@@ -172,13 +173,13 @@ vm_handle_wp (struct page *page UNUSED) {
 /* 성공 시 true를 반환합니다. */
 bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+		bool user UNUSED, bool write , bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
 
-	return vm_do_claim_page (page);
+	return vm_do_claim_page (page, write);
 }
 
 /* 페이지를 해제합니다.
@@ -215,6 +216,11 @@ vm_do_claim_page (struct page *page) {
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */
 	// pml4_set_page 함수 사용해서 매핑 추가
+	spt_page_insert();
+
+	struct thread *t = thread_current();
+	pml4_set_page(t->pml4, page, frame, write);
+	
 	return swap_in (page, frame->kva);
 }
 
