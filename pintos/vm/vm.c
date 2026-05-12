@@ -178,15 +178,17 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	struct page *page = NULL;
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
+
+	page = spt_find_page(spt, addr);
 	if (addr == NULL)
 		goto done;
 	if (is_kernel_vaddr(addr))
 		goto done;
-	// if(write != page->writable)
-	// 		goto done;
+	if(write && !page->writable)
+			goto done;
 	if(!not_present)
 		goto done;
-	if(!spt_find_page(spt, va))
+	if(!page)
 		goto done;
 
 	return vm_do_claim_page (page);
