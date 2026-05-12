@@ -1,6 +1,28 @@
+/* 
+vm_claim_page() -> 주소 기준 claim 요청 진입점
+
+spt_find_page() -> 주소에 해당하는 page metadata 찾기
+
+vm_do_claim_page() -> claim 실제 처리 총괄
+
+vm_get_frame() -> 빈 frame 준비
+
+palloc_get_page(PAL_USER) ->> user pool에서 실제 4KB 메모리 할당
+
+frame table insert -> 확보한 frame을 전역 관리 목록에 등록 -> 헬퍼로 빼야할듯? remove도..
+
+page <-> frame 연결 -> 가상 page와 실제 frame 관계 확정
+
+pml4_set_page() -> CPU 번역표에 매핑 추가
+
+swap_in() -> frame에 page 내용 채우기
+
+rollback -> 실패 시 원상복구
+*/
 /* vm.c: 가상 메모리 객체를 위한 일반 인터페이스. */
 
 #include "threads/malloc.h"
+#include "threads/mmu.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
 #include "kernel/hash.h"
@@ -12,12 +34,14 @@ vm_init (void) {
 	vm_anon_init ();
 	vm_file_init ();
 	list_init(&frame_table);
+	lock_init(&frame_table_lock);
 #ifdef EFILESYS  /* 프로젝트 4용 */
 	pagecache_init ();
 #endif
 	register_inspect_intr ();
 	/* 위 줄들은 수정하지 마세요. */
 	/* TODO: 여기에 코드를 작성합니다. */
+	// 프레임 테이블이랑 락 초기화 필요.
 }
 
 /* 페이지의 타입을 얻습니다. 페이지가 초기화된 뒤의 타입을 알고 싶을 때 유용합니다.
@@ -130,6 +154,25 @@ static struct frame *
 vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채웁니다. */
+	
+	void *kva = palloc_get_page(PAL_USER);
+	if (kva == NULL) {
+		return NULL;
+	}
+
+	frame = malloc (sizeof *frame);
+	// 할당이 안 된 경우... 롤백을 여기서 해야할듯여
+	// FRAME 할당 초기화,,
+	if (frame == NULL) {
+		palloc_free_page(kva);
+		return NULL;
+	}
+	frame->kva = kva;
+	frame->page = NULL;
+	lock_acquire(&frame_table_lock);
+	list_push_back(&frame_table, &frame->e);
+	lock_release(&frame_table_lock);
+
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
 	return frame;
@@ -148,13 +191,28 @@ vm_handle_wp (struct page *page UNUSED) {
 /* 성공 시 true를 반환합니다. */
 bool
 vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write UNUSED, bool not_present UNUSED) {
+		bool user UNUSED, bool write , bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
 
+	
+	if (addr == NULL)
+		goto done;
+	if (is_kernel_vaddr(addr))
+		goto done;
+	if(!not_present)
+		goto done;
+	page = spt_find_page(spt, addr);
+	if(page == NULL)
+		goto done;
+	if(write && !page->writable)
+			goto done;
+
 	return vm_do_claim_page (page);
+	done:
+		exit(-1);
 }
 
 /* 페이지를 해제합니다.
@@ -170,7 +228,17 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채웁니다. */
-
+	/* 
+	- va를 pg_round_down으로 page boundary에 맞춘다 -> spt_find_page()에 되어있음.
+    - 현재 thread의 spt에서 spt_find_page()로 page를 찾는다
+    - 없으면 false 반환
+    - 있으면 vm_do_claim_page(page) 호출
+	*/
+	page = spt_find_page(thread_current()->spt, va);
+	// 예외처리
+	if (page == NULL) {
+		return false;
+	}
 	return vm_do_claim_page (page);
 }
 
@@ -184,7 +252,19 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */
-
+	struct thread *t = thread_current();
+	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable)){
+		pml4_clear_page(t->pml4, page->va);
+		// vm_dealloc_page..로 해줘야 할듯?
+		vm_dealloc_page(page);
+		// frame도 free해주고...
+		free(frame);
+		// page도...?
+		frame->page = NULL;
+		page->frame = NULL;
+		return false;
+	}
+	
 	return swap_in (page, frame->kva);
 }
 
