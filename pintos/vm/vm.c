@@ -24,6 +24,8 @@ rollback -> 실패 시 원상복구
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "threads/vaddr.h"
+
 
 /* 각 서브시스템의 초기화 코드를 호출하여 가상 메모리 서브시스템을 초기화합니다. */
 void
@@ -133,15 +135,23 @@ vm_get_frame (void) {
 	struct frame *frame = NULL;
 	/* TODO: 이 함수를 채웁니다. */
 	
-	/* 
-    - palloc_get_page(PAL_USER)로 실제 페이지 1개 확보
-    - 실패하면 지금 단계에서는 NULL 반환 또는 이후 eviction 자리로 연결
-    - frame 메타데이터를 malloc으로 할당
-    - frame->kva 설정
-    - frame->page = NULL 초기화
-    - frame table에 삽입
-    - 반환
-	*/
+	void *kva = palloc_get_page(PAL_USER);
+	if (kva == NULL) {
+		return NULL;
+	}
+
+	frame = malloc (sizeof *frame);
+	// 할당이 안 된 경우... 롤백을 여기서 해야할듯여
+	// FRAME 할당 초기화,,
+	if (frame == NULL) {
+		palloc_free_page(kva);
+		return NULL;
+	}
+	frame->kva = kva;
+	frame->page = NULL;
+
+	// 여기서 LOCK 해야 하나?
+	list_push_back(&frame_table, &frame->e);
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
