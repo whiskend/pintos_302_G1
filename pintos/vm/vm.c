@@ -234,12 +234,12 @@ vm_do_claim_page (struct page *page) {
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */
-	// pml4_set_page 함수 사용해서 매핑 추가
-	spt_page_insert();
-
 	struct thread *t = thread_current();
-	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable))
+	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable)){
+		pml4_clear_page(t->pml4, page->va);
 		exit(-1);
+	}
+		
 	
 	return swap_in (page, frame->kva);
 }
