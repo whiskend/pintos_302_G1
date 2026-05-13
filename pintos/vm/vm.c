@@ -61,6 +61,7 @@ page_get_type (struct page *page) {
 static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
+static void rollback_frame (struct page *page, struct frame *frame);
 
 /* 초기화 함수가 있는 대기 중인 페이지 객체를 생성합니다. 페이지를 만들려면
  * 직접 생성하지 말고 이 함수나 `vm_alloc_page`를 통해 생성하세요. */
@@ -214,6 +215,17 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		exit(-1);
 }
 
+static void rollback_frame (struct page *page, struct frame *frame) {
+	frame->page = NULL;
+	page->frame = NULL;
+
+	lock_acquire(&frame_table_lock);
+	list_remove(frame->e);
+	lock_release(&frame_table_lock);
+
+	free(frame);
+}
+
 /* 페이지를 해제합니다.
  * 이 함수는 수정하지 마세요. */
 void
@@ -248,13 +260,7 @@ vm_do_claim_page (struct page *page) {
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */
 	struct thread *t = thread_current();
 	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable)){
-		
-		frame->page = NULL;
-		page->frame = NULL;
-		
-		vm_dealloc_page(page);
-		free(frame);
-		
+		rollback_frame(page, frame);
 		return false;
 	}
 	
@@ -262,13 +268,7 @@ vm_do_claim_page (struct page *page) {
 		return true;
 	else {
 		pml4_clear_page(t->pml4, page->va);
-		
-		frame->page = NULL;
-		page->frame = NULL;
-
-		vm_dealloc_page(page);
-		free(frame);
-		
+		rollback_frame(page, frame);
 		return false;
 	}
 }
