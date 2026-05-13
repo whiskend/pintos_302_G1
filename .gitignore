@@ -304,3 +304,6 @@ pintos/.vscode/c_cpp_properties.json
 pintos/.vscode/launch.json
 pintos/.vscode/settings.json
 .vscode/settings.json
+
+# Personal docs
+docs/이경근/
