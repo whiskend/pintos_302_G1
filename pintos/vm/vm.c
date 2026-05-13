@@ -78,10 +78,23 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		/* TODO: 페이지를 생성하고 VM 타입에 맞는 initializer를 가져온 뒤,
 		 * TODO: uninit_new를 호출하여 "uninit" 페이지 구조체를 생성합니다.
 		 * TODO: uninit_new 호출 뒤 필드를 수정해야 합니다. */
+		bool (*initializer)(struct page *, enum vm_type, void *);
+		if (type == VM_ANON) {
+			initializer = anon_initializer;
+		}
+		else if (type == VM_FILE) {
+			initializer = file_backed_initializer;
+		}
+
 		struct page *page = malloc(sizeof page);
-		uninit_new(page, upage, init, type, aux, ())
+		// if(aux != NULL) {
+		// 	page->aux = *(struct lazy_aux *) aux;
+		// }
+		uninit_new(page, upage, init, type, aux, initializer);
 	/* TODO: 페이지를 spt에 삽입합니다. */
-		//if(spt_insert_page(&spt))
+		if(spt_insert_page(&spt, page)) {
+			return true;
+		}
 	}
 err:
 	return false;
@@ -125,6 +138,7 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	hash_delete(spt->hash_pages, &page->hash_elem);
 	free(page->frame);
 	//이건 원래 있던 거.
+	file_close(page->aux.file);
 	vm_dealloc_page (page);
 	return true;
 }

@@ -892,6 +892,14 @@ install_page (void *upage, void *kpage, bool writable) {
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
+	struct lazy_aux lazy = *(struct lazy_aux *) aux;
+	page->aux = lazy;
+	if (file_read (lazy->file, page, lazy->read_bytes) != (int) lazy->read_bytes) {
+		palloc_free_page (page);
+		return false;
+	}
+	memset (page + lazy->read_bytes, 0, lazy->zero_bytes);
+
 	/* TODO: 이 함수는 주소 VA에서 첫 page fault가 발생했을 때 호출됩니다. */
 	/* TODO: 이 함수를 호출할 때 VA를 사용할 수 있습니다. */
 }
@@ -924,9 +932,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: lazy_load_segment에 정보를 전달하도록 aux를 설정합니다. */
-		void *aux = NULL;
+		struct lazy_aux aux = {
+			.file = file,
+			.offset = ofs,
+			.read_bytes = read_bytes,
+			.zero_bytes = zero_bytes,
+			.writable = writable
+		};
+
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+					writable, lazy_load_segment, &aux))
 			return false;
 
 		/* 다음 페이지로 이동합니다. */
