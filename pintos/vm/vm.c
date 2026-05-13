@@ -86,9 +86,9 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		}
 
 		struct page *page = malloc(sizeof page);
-		if(aux != NULL) {
-			page->aux = *(struct lazy_aux *) aux;
-		}
+		// if(aux != NULL) {
+		// 	page->aux = *(struct lazy_aux *) aux;
+		// }
 		uninit_new(page, upage, init, type, aux, initializer);
 	/* TODO: 페이지를 spt에 삽입합니다. */
 		if(spt_insert_page(&spt, page)) {
@@ -137,6 +137,7 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	hash_delete(spt->hash_pages, &page->hash_elem);
 	free(page->frame);
 	//이건 원래 있던 거.
+	file_close(page->aux.file);
 	vm_dealloc_page (page);
 	return true;
 }
@@ -269,6 +270,7 @@ vm_do_claim_page (struct page *page) {
 	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable)){
 		pml4_clear_page(t->pml4, page->va);
 		// vm_dealloc_page..로 해줘야 할듯?
+		file_close(page->aux.file);
 		vm_dealloc_page(page);
 		// frame도 free해주고...
 		free(frame);
