@@ -220,7 +220,7 @@ static void rollback_frame (struct page *page, struct frame *frame) {
 	page->frame = NULL;
 
 	lock_acquire(&frame_table_lock);
-	list_remove(frame->e);
+	list_remove(&frame->elem);
 	lock_release(&frame_table_lock);
 
 	palloc_free_page(frame->kva);
