@@ -223,6 +223,8 @@ static void rollback_frame (struct page *page, struct frame *frame) {
 	list_remove(frame->e);
 	lock_release(&frame_table_lock);
 
+	palloc_free_page(frame->kva);
+
 	free(frame);
 }
 
@@ -239,7 +241,7 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채웁니다. */
-	page = spt_find_page(thread_current()->spt, va);
+	page = spt_find_page(&thread_current()->spt, va);
 	
 	if (page == NULL) {
 		return false;
@@ -252,6 +254,9 @@ vm_claim_page (void *va UNUSED) {
 static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
+
+	if(frame == NULL)
+		return false;
 
 	/* 링크를 설정합니다. */
 	frame->page = page;
