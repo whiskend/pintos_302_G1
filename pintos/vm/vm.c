@@ -28,6 +28,9 @@ rollback -> 실패 시 원상복구
 #include "kernel/hash.h"
 #include "threads/vaddr.h"
 
+struct lock frame_table_lock;
+struct list frame_table;
+
 /* 각 서브시스템의 초기화 코드를 호출하여 가상 메모리 서브시스템을 초기화합니다. */
 void
 vm_init (void) {
@@ -184,7 +187,7 @@ vm_get_frame (void) {
 	frame->kva = kva;
 	frame->page = NULL;
 	lock_acquire(&frame_table_lock);
-	list_push_back(&frame_table, &frame->e);
+	list_push_back(&frame_table, &frame->elem);
 	lock_release(&frame_table_lock);
 
 	ASSERT (frame != NULL);
@@ -226,7 +229,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 
 	return vm_do_claim_page (page);
 	fail:
-		exit(-1);
+		return false;
 }
 
 static void rollback_frame (struct page *page, struct frame *frame) {

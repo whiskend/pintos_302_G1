@@ -892,9 +892,9 @@ install_page (void *upage, void *kpage, bool writable) {
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
-	struct lazy_aux lazy = *(struct lazy_aux *) aux;
-	page->aux = lazy;
-	if (file_read (lazy->file, page, lazy->read_bytes) != (int) lazy->read_bytes) {
+	struct lazy_aux *lazy = (struct lazy_aux *) aux;
+	page->aux = *lazy;
+	if (file_read (lazy->file, page->va, lazy->read_bytes) != (int) lazy->read_bytes) {
 		palloc_free_page (page);
 		return false;
 	}

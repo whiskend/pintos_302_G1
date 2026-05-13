@@ -38,8 +38,6 @@ struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
 
-struct lock frame_table_lock;
-struct list frame_table;
 // 여기 락 필요할듯? 전역으로 선언해서 여러 함수에서 사용해야 할 거 같아유
 
 // 페이지 별로 들어가는 보조 데이터(해제 해야되는 리소스 포함)
