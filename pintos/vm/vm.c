@@ -61,6 +61,7 @@ page_get_type (struct page *page) {
 static struct frame *vm_get_victim (void);
 static bool vm_do_claim_page (struct page *page);
 static struct frame *vm_evict_frame (void);
+static void rollback_frame (struct page *page, struct frame *frame);
 
 /* 초기화 함수가 있는 대기 중인 페이지 객체를 생성합니다. 페이지를 만들려면
  * 직접 생성하지 말고 이 함수나 `vm_alloc_page`를 통해 생성하세요. */
@@ -161,8 +162,7 @@ vm_get_frame (void) {
 	}
 
 	frame = malloc (sizeof *frame);
-	// 할당이 안 된 경우... 롤백을 여기서 해야할듯여
-	// FRAME 할당 초기화,,
+	
 	if (frame == NULL) {
 		palloc_free_page(kva);
 		return NULL;
@@ -199,20 +199,33 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 
 	
 	if (addr == NULL)
-		goto done;
+		goto fail;
 	if (is_kernel_vaddr(addr))
-		goto done;
+		goto fail;
 	if(!not_present)
-		goto done;
+		goto fail;
 	page = spt_find_page(spt, addr);
 	if(page == NULL)
-		goto done;
+		goto fail;
 	if(write && !page->writable)
-			goto done;
+		goto fail;
 
 	return vm_do_claim_page (page);
-	done:
+	fail:
 		exit(-1);
+}
+
+static void rollback_frame (struct page *page, struct frame *frame) {
+	frame->page = NULL;
+	page->frame = NULL;
+
+	lock_acquire(&frame_table_lock);
+	list_remove(&frame->elem);
+	lock_release(&frame_table_lock);
+
+	palloc_free_page(frame->kva);
+
+	free(frame);
 }
 
 /* 페이지를 해제합니다.
@@ -228,17 +241,12 @@ bool
 vm_claim_page (void *va UNUSED) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채웁니다. */
-	/* 
-	- va를 pg_round_down으로 page boundary에 맞춘다 -> spt_find_page()에 되어있음.
-    - 현재 thread의 spt에서 spt_find_page()로 page를 찾는다
-    - 없으면 false 반환
-    - 있으면 vm_do_claim_page(page) 호출
-	*/
-	page = spt_find_page(thread_current()->spt, va);
-	// 예외처리
+	page = spt_find_page(&thread_current()->spt, va);
+	
 	if (page == NULL) {
 		return false;
 	}
+
 	return vm_do_claim_page (page);
 }
 
@@ -247,6 +255,9 @@ static bool
 vm_do_claim_page (struct page *page) {
 	struct frame *frame = vm_get_frame ();
 
+	if(frame == NULL)
+		return false;
+
 	/* 링크를 설정합니다. */
 	frame->page = page;
 	page->frame = frame;
@@ -254,18 +265,17 @@ vm_do_claim_page (struct page *page) {
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */
 	struct thread *t = thread_current();
 	if(!pml4_set_page(t->pml4, page->va, frame->kva, page->writable)){
-		pml4_clear_page(t->pml4, page->va);
-		// vm_dealloc_page..로 해줘야 할듯?
-		vm_dealloc_page(page);
-		// frame도 free해주고...
-		free(frame);
-		// page도...?
-		frame->page = NULL;
-		page->frame = NULL;
+		rollback_frame(page, frame);
 		return false;
 	}
 	
-	return swap_in (page, frame->kva);
+	if(swap_in (page, frame->kva))
+		return true;
+	else {
+		pml4_clear_page(t->pml4, page->va);
+		rollback_frame(page, frame);
+		return false;
+	}
 }
 
 static bool hash_va_less(const struct hash_elem *a,
