@@ -894,12 +894,14 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
 	struct lazy_aux *lazy = (struct lazy_aux *) aux;
 	page->aux = *lazy;
-	if (file_read (lazy->file, page->va, lazy->read_bytes) != (int) lazy->read_bytes) {
-		palloc_free_page (page);
+	
+	if (file_read (lazy->file, page->frame->kva, lazy->read_bytes) != (int) lazy->read_bytes) {
+		palloc_free_page (page->frame->kva);
 		return false;
 	}
 	memset (page + lazy->read_bytes, 0, lazy->zero_bytes);
 
+	free(aux);
 	/* TODO: 이 함수는 주소 VA에서 첫 page fault가 발생했을 때 호출됩니다. */
 	/* TODO: 이 함수를 호출할 때 VA를 사용할 수 있습니다. */
 }

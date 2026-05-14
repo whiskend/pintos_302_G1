@@ -150,7 +150,6 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	hash_delete(spt->hash_pages, &page->hash_elem);
 	free(page->frame);
 	//이건 원래 있던 거.
-	file_close(page->aux.file);
 	vm_dealloc_page (page);
 	return true;
 }
