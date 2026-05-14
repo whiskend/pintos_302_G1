@@ -937,7 +937,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 			.offset = ofs,
 			.read_bytes = read_bytes,
 			.zero_bytes = zero_bytes,
-			.writable = writable
 		};
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
