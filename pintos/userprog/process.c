@@ -894,9 +894,15 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
 	struct lazy_aux *lazy = (struct lazy_aux *) aux;
 	page->aux = *lazy;
+	if (lazy->read_bytes == NULL)
+		printf("readbytes NULL\n");
+	
+	if(page->frame->kva == NULL)
+		printf("kva NULL\n");
 	
 	if (file_read (lazy->file, page->frame->kva, lazy->read_bytes) != (int) lazy->read_bytes) {
 		// palloc_free_page (page->frame->kva);
+		printf("file read 실패\n");
 		return false;
 	}
 	memset (page + lazy->read_bytes, 0, lazy->zero_bytes);
@@ -964,29 +970,19 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: 해당 페이지가 스택임을 표시해야 합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
 	
-	// rsp 적용 안된 코드임다...
-	// 스택에 사용할 가상 페이지 등록
-	success = vm_alloc_page (VM_ANON, stack_bottom, true);
-	if (!success) {
+	success = vm_alloc_page(VM_ANON, stack_bottom, true);
+	if(!success) {
 		return false;
+		printf("alloc Page 실패!\n");
 	}
 
-	// page metadata를 찾음.
-	struct page *page = spt_find_page (&thread_current()->spt, stack_bottom);
-	if (page == NULL) {
-		return false;
-	}
-
-	// 일단 사용자 스택이니깐.. 쓰기는 가능해야 할 거임.
-	page->writable = true;
-
-	// 실제 프레임 할당, 페이지 테이블에 매핑.
-	success = vm_claim_page (stack_bottom);
-	// stack pointer의 위치를 맞춰줘야 함.
-	if (success) {
+	success = vm_claim_page(stack_bottom);
+	if(success) {
 		if_->rsp = USER_STACK;
 	}
-
+	else {
+		printf("claim 실패\n");
+	}
 	return success;
 }
 #endif /* VM */
