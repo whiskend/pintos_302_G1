@@ -46,7 +46,6 @@ struct lazy_aux {
 	off_t offset;
 	uint32_t read_bytes;
 	uint32_t zero_bytes;
-	bool writable;
 };
 
 /* "page"의 표현입니다.

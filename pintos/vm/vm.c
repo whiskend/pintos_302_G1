@@ -89,13 +89,22 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			initializer = file_backed_initializer;
 		}
 
-		struct page *page = malloc(sizeof page);
+		// 수정.. page -> *page
+		// why? struct page 하나를 넣어야 함. 그런데 포인터 크기 만큼만 잡고 있어요.
+		// 까딱하면 여기서 부터 터질 듯...
+		struct page *page = malloc(sizeof *page);
 		// if(aux != NULL) {
 		// 	page->aux = *(struct lazy_aux *) aux;
 		// }
+		
+		// 추가..
+		// why? 읽기 전용인지, 쓰기가 가능한지 나중에 fault 처리할 때 봐야하는데, 나중에 보면 모를 거 같아서 일단 넣어둡니다.
+		page->writable = writable;
 		uninit_new(page, upage, init, type, aux, initializer);
-	/* TODO: 페이지를 spt에 삽입합니다. */
-		if(spt_insert_page(&spt, page)) {
+		/* TODO: 페이지를 spt에 삽입합니다. */
+		// 수정 *spt -> spt
+		// why? 페이지 목록의 주소를 넘겨야 하는데, 그 주소의 주소를 넘김. 잘못 넘긴 꼴..
+		if(spt_insert_page(spt, page)) {
 			return true;
 		}
 	}
@@ -294,6 +303,7 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 }
+
 
 static bool hash_va_less(const struct hash_elem *a,
 		const struct hash_elem *b,

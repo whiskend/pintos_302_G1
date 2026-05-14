@@ -962,6 +962,29 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: 성공하면 rsp를 그에 맞게 설정합니다.
 	 * TODO: 해당 페이지가 스택임을 표시해야 합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
+	
+	// rsp 적용 안된 코드임다...
+	// 스택에 사용할 가상 페이지 등록
+	success = vm_alloc_page (VM_ANON, stack_bottom, true);
+	if (!success) {
+		return false;
+	}
+
+	// page metadata를 찾음.
+	struct page *page = spt_find_page (&thread_current()->spt, stack_bottom);
+	if (page == NULL) {
+		return false;
+	}
+
+	// 일단 사용자 스택이니깐.. 쓰기는 가능해야 할 거임.
+	page->writable = true;
+
+	// 실제 프레임 할당, 페이지 테이블에 매핑.
+	success = vm_claim_page (stack_bottom);
+	// stack pointer의 위치를 맞춰줘야 함.
+	if (success) {
+		if_->rsp = USER_STACK;
+	}
 
 	return success;
 }
