@@ -900,12 +900,12 @@ lazy_load_segment (struct page *page, void *aux) {
 	if(page->frame->kva == NULL)
 		printf("kva NULL\n");
 	
-	if (file_read (lazy->file, page->frame->kva, lazy->read_bytes) != (int) lazy->read_bytes) {
+	if (file_read_at (lazy->file, page->frame->kva, lazy->read_bytes, lazy->offset) != (int) lazy->read_bytes) {
 		// palloc_free_page (page->frame->kva);
 		printf("file read 실패\n");
 		return false;
 	}
-	memset (page + lazy->read_bytes, 0, lazy->zero_bytes);
+	memset ((uint8_t *) page->frame->kva + lazy->read_bytes, 0, lazy->zero_bytes);
 
 	free(aux);
 	/* TODO: 이 함수는 주소 VA에서 첫 page fault가 발생했을 때 호출됩니다. */
@@ -940,15 +940,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: lazy_load_segment에 정보를 전달하도록 aux를 설정합니다. */
-		struct lazy_aux aux = {
-			.file = file,
-			.offset = ofs,
-			.read_bytes = read_bytes,
-			.zero_bytes = zero_bytes,
-		};
+		struct lazy_aux *aux = malloc(sizeof (struct lazy_aux));
+		aux->file = file;
+		aux->offset = ofs;
+		aux->read_bytes;
+		aux->zero_bytes;
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, &aux))
+					writable, lazy_load_segment, aux))
 			return false;
 
 		/* 다음 페이지로 이동합니다. */
