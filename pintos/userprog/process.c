@@ -893,7 +893,7 @@ static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
 	struct lazy_aux *lazy = (struct lazy_aux *) aux;
-	page->aux = *lazy;
+	
 	if (lazy->read_bytes == NULL)
 		printf("readbytes NULL\n");
 	

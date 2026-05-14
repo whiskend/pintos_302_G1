@@ -56,8 +56,6 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* 사용자 공간 기준 주소 */
 	struct frame *frame;   /* 프레임에 대한 역참조 */
-	struct lazy_aux aux;
-
 	/* 직접 구현할 부분 */
 
 	/* 타입별 데이터는 union에 묶여 있습니다.
