@@ -243,7 +243,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 	} else {
 		// 커널모드에서 fault 났을 때.
 		// syscall 처리 중에 유저 주소 건들면 fault가 날 수 잇음..
-		// 근데 f->rsp는 커널 스택 포인터라... stack growth(유저 모드?) 판단에 쓰면 안 된다.
+		// 근데 f->rsp는 커널 스택 포인터라... stack growth(유저 스택 늘리기..라서..) 판단에 쓰면 안 된다.
 		// 그래서 syscall 진입할 때 user_rsp 저장해뒀다가 씀.
 		rsp = (void *) thread_current()->user_rsp;
 	}
