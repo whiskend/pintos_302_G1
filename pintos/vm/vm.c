@@ -222,6 +222,12 @@ vm_get_frame (void) {
 /* 스택을 확장합니다. */
 static void
 vm_stack_growth (void *addr UNUSED) {
+	// fault가 난 주소를 기점으로 페이지 경계로 내리기.
+	void *upage = pg_round_down(addr);
+	// 그리고 그 주소에다가 ANON 페이지 만들기.
+	vm_alloc_page (VM_ANON, upage, true);
+	// 만든 페이지를 바로 CLAIM하기.
+	vm_claim_page (upage);
 }
 
 /* 쓰기 보호된 페이지에서 발생한 폴트를 처리합니다. */
