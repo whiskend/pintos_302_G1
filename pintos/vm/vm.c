@@ -27,10 +27,12 @@ rollback -> 실패 시 원상복구
 #include "vm/inspect.h"
 #include "kernel/hash.h"
 #include "threads/vaddr.h"
+#include "threads/interrupt.h"
 
 struct lock frame_table_lock;
 struct list frame_table;
 
+#define STACK_MAX (1 << 20)
 /* 각 서브시스템의 초기화 코드를 호출하여 가상 메모리 서브시스템을 초기화합니다. */
 void
 vm_init (void) {
@@ -233,20 +235,47 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write , bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
+	void *rsp;
+
+	if (user) {
+		// 유저모드에서 fault 났을 때.
+		rsp = (void *) f->rsp;
+	} else {
+		// 커널모드에서 fault 났을 때.
+		// syscall 처리 중에 유저 주소 건들면 fault가 날 수 잇음..
+		// 근데 f->rsp는 커널 스택 포인터라... stack growth(유저 모드?) 판단에 쓰면 안 된다.
+		// 그래서 syscall 진입할 때 user_rsp 저장해뒀다가 씀.
+		rsp = (void *) thread_current()->user_rsp;
+	}
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
 
-	
 	if (addr == NULL)
 		goto fail;
 	if (is_kernel_vaddr(addr))
 		goto fail;
-	if(!not_present)
+	if (!not_present)
 		goto fail;
 	page = spt_find_page(spt, addr);
-	if(page == NULL)
-		goto fail;
-	if(write && !page->writable)
+	if (page == NULL) {
+		// 다음 조건을 만족해야 stack_growth로 넘어감.
+		if (addr != NULL &&
+		// 1. addr가 user addr인지?
+		is_user_vaddr(addr) &&
+		// 2. addr가 USER_STACK 아래인지?
+		addr < USER_STACK &&
+		// 3. 너무 많이 자라지는 않았는지?
+		addr >= USER_STACK - STACK_MAX &&
+		// 4. addr >= rsp - 8 정도인지?
+		addr >= rsp - 8 ) {
+		// 하나라도 만족 못하면 goto fail.
+			vm_stack_growth (addr);	
+			page = spt_find_page (&thread_current()->spt, addr);
+		} else {
+			goto fail;
+		}
+	}
+	if (write && !page->writable)
 		goto fail;
 
 	return vm_do_claim_page (page);
