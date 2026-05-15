@@ -892,14 +892,21 @@ install_page (void *upage, void *kpage, bool writable) {
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
-	struct lazy_aux lazy = *(struct lazy_aux *) aux;
-	page->aux = lazy;
-	if (file_read (lazy->file, page, lazy->read_bytes) != (int) lazy->read_bytes) {
-		palloc_free_page (page);
+	struct lazy_aux *lazy = (struct lazy_aux *) aux;
+	
+	if(page->frame->kva == NULL)
+		printf("kva NULL\n");
+	
+	if (file_read_at (lazy->file, page->frame->kva, lazy->read_bytes, lazy->offset) != (int) lazy->read_bytes) {
+		// palloc_free_page (page->frame->kva);
+		printf("file read 실패\n");
 		return false;
 	}
-	memset (page + lazy->read_bytes, 0, lazy->zero_bytes);
+	memset ((uint8_t *) page->frame->kva + lazy->read_bytes, 0, lazy->zero_bytes);
 
+	free(aux);
+	return true;
+	
 	/* TODO: 이 함수는 주소 VA에서 첫 page fault가 발생했을 때 호출됩니다. */
 	/* TODO: 이 함수를 호출할 때 VA를 사용할 수 있습니다. */
 }
@@ -932,22 +939,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: lazy_load_segment에 정보를 전달하도록 aux를 설정합니다. */
-		struct lazy_aux aux = {
-			.file = file,
-			.offset = ofs,
-			.read_bytes = read_bytes,
-			.zero_bytes = zero_bytes,
-			.writable = writable
-		};
+		struct lazy_aux *aux = malloc(sizeof *aux);
+		aux->file = file;
+		aux->offset = ofs;
+		aux->read_bytes = page_read_bytes;
+		aux->zero_bytes = page_zero_bytes;
 
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, &aux))
+					writable, lazy_load_segment, aux))
 			return false;
 
 		/* 다음 페이지로 이동합니다. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		ofs += page_read_bytes;
 	}
 	return true;
 }
@@ -962,7 +968,20 @@ setup_stack (struct intr_frame *if_) {
 	 * TODO: 성공하면 rsp를 그에 맞게 설정합니다.
 	 * TODO: 해당 페이지가 스택임을 표시해야 합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
+	
+	success = vm_alloc_page(VM_ANON, stack_bottom, true);
+	if(!success) {
+		return false;
+		printf("alloc Page 실패!\n");
+	}
 
+	success = vm_claim_page(stack_bottom);
+	if(success) {
+		if_->rsp = USER_STACK;
+	}
+	else {
+		printf("claim 실패\n");
+	}
 	return success;
 }
 #endif /* VM */

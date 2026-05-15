@@ -28,6 +28,9 @@ rollback -> 실패 시 원상복구
 #include "kernel/hash.h"
 #include "threads/vaddr.h"
 
+struct lock frame_table_lock;
+struct list frame_table;
+
 /* 각 서브시스템의 초기화 코드를 호출하여 가상 메모리 서브시스템을 초기화합니다. */
 void
 vm_init (void) {
@@ -86,14 +89,32 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			initializer = file_backed_initializer;
 		}
 
-		struct page *page = malloc(sizeof page);
+		// 수정.. page -> *page
+		// why? struct page 하나를 넣어야 함. 그런데 포인터 크기 만큼만 잡고 있어요.
+		// 까딱하면 여기서 부터 터질 듯...
+		struct page *page = malloc(sizeof (struct page));
+		if(page == NULL) {
+			return false;
+			printf("page malloc 실패\n");
+		}
+
 		// if(aux != NULL) {
 		// 	page->aux = *(struct lazy_aux *) aux;
 		// }
+		
+		// 추가..
+		// why? 읽기 전용인지, 쓰기가 가능한지 나중에 fault 처리할 때 봐야하는데, 나중에 보면 모를 거 같아서 일단 넣어둡니다.
 		uninit_new(page, upage, init, type, aux, initializer);
-	/* TODO: 페이지를 spt에 삽입합니다. */
-		if(spt_insert_page(&spt, page)) {
+		page->writable = writable;
+		/* TODO: 페이지를 spt에 삽입합니다. */
+		// 수정 *spt -> spt
+		// why? 페이지 목록의 주소를 넘겨야 하는데, 그 주소의 주소를 넘김. 잘못 넘긴 꼴..
+		if(spt_insert_page(spt, page)) {
 			return true;
+		}
+		else {
+
+			printf("spt_insert_page 실패\n");
 		}
 	}
 err:
@@ -109,7 +130,11 @@ spt_find_page (struct supplemental_page_table *spt, void *va) {
 	page.va = pg_round_down(va);
 	e = hash_find (spt->hash_pages, &page.hash_elem);
 	if (e == NULL)
+	{
 		return NULL;
+		printf("hash_find 실패\n");
+
+	}
 	return hash_entry(e, struct page, hash_elem);
 }
 
@@ -117,19 +142,20 @@ spt_find_page (struct supplemental_page_table *spt, void *va) {
 bool
 spt_insert_page (struct supplemental_page_table *spt,
 		struct page *page) {
-	bool succ = false;
+	bool success = false;
 	/* TODO: 이 함수를 채웁니다. */
 	//해당 가상 주소가 주어진 보조 페이지 테이블에 존재하지 않는지 확인해야함.
 	//hash_insert를 참고해보자.
 	//page의 hash_elem과 spt의 hash_elem 비교.
 	if(hash_insert(spt->hash_pages, &page->hash_elem) == NULL) {
-		succ = true;
+		success = true;
 	}
 	else {
-		succ = false;
+		success = false;
+		printf("hash_insert 실패\n");
 	}
 	//hash_entry()
-	return succ;
+	return success;
 }
 
 void
@@ -138,7 +164,6 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	hash_delete(spt->hash_pages, &page->hash_elem);
 	free(page->frame);
 	//이건 원래 있던 거.
-	file_close(page->aux.file);
 	vm_dealloc_page (page);
 	return true;
 }
@@ -184,7 +209,7 @@ vm_get_frame (void) {
 	frame->kva = kva;
 	frame->page = NULL;
 	lock_acquire(&frame_table_lock);
-	list_push_back(&frame_table, &frame->e);
+	list_push_back(&frame_table, &frame->elem);
 	lock_release(&frame_table_lock);
 
 	ASSERT (frame != NULL);
@@ -226,7 +251,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 
 	return vm_do_claim_page (page);
 	fail:
-		exit(-1);
+		return false;
 }
 
 static void rollback_frame (struct page *page, struct frame *frame) {
@@ -237,7 +262,7 @@ static void rollback_frame (struct page *page, struct frame *frame) {
 	list_remove(&frame->elem);
 	lock_release(&frame_table_lock);
 
-	palloc_free_page(frame->kva);
+	//palloc_free_page(frame->kva);
 
 	free(frame);
 }
@@ -291,6 +316,7 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 }
+
 
 static bool hash_va_less(const struct hash_elem *a,
 		const struct hash_elem *b,

@@ -19,6 +19,7 @@
 #include "devices/input.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "vm/vm.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -59,7 +60,9 @@ static bool
 is_valid_ptr (const void *ptr) {
 	if (ptr == NULL || !is_user_vaddr (ptr))
 		return false;
-	return pml4_get_page (thread_current ()->pml4, ptr) != NULL;
+	// page가 없는데?
+	//return pml4_get_page (thread_current ()->pml4, ptr) != NULL;
+	return spt_find_page(&thread_current()->spt, ptr);
 }
 
 static bool
@@ -80,7 +83,9 @@ is_valid_buffer (const void *buffer, int size) {
 			page <= end;
 			page += PGSIZE) {
 		if (!is_valid_ptr ((const void *) page))
+		{
 			return false;
+		}
 	}
 	return true;
 }
@@ -244,7 +249,6 @@ syscall_handler (struct intr_frame *f) {
 				f->R.rax = 0;
 				break;
 			}
-
 
 			struct fd_entry *fd_entry = find_fd_entry (fd);
 			if (fd_entry == NULL) {
