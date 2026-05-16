@@ -377,5 +377,5 @@ supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: 스레드가 보유한 모든 supplemental_page_table을 파괴하고,
 	 * TODO: 수정된 모든 내용을 저장소에 다시 씁니다. */
 	hash_destroy (spt->hash_pages, spt_destroy_page);
-	free(spt);
+	free(spt->hash_pages);
 }
