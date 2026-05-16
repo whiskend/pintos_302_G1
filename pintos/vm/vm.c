@@ -349,24 +349,26 @@ supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
 }
 
 void spt_destroy_page (struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry (e, struct page, hash_elem);
 
-	struct page *page = hash_entry(e, struct page, hash_elem);
+	if (page->frame != NULL) {
 	struct frame *frame = page->frame;
 	
-	lock_acquire(&frame_table_lock);
-	list_remove(&frame->elem);
-	lock_release(&frame_table_lock);
+	lock_acquire (&frame_table_lock);
+	list_remove (&frame->elem);
+	lock_release (&frame_table_lock);
 
-	pml4_clear_page(thread_current()->pml4, page->va);
+	pml4_clear_page (thread_current()->pml4, page->va);
 
-	palloc_free_page(frame->kva);
+	palloc_free_page (frame->kva);
 
 	frame->page = NULL;
 	page->frame = NULL;
 
-	free(frame);
+	free (frame);
+}
 
-	vm_dealloc_page(page);
+	vm_dealloc_page (page);
 }
 
 /* 보조 페이지 테이블이 보유한 자원을 해제합니다. */
