@@ -344,8 +344,17 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* 보조 페이지 테이블을 src에서 dst로 복사합니다. */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
+		//src의 보조 페이지 테이블에 있는 각 페이지를 순회하여 dst의 보조 페이지 테이블에 엔트리를 정확히 복사. uninit 페이지를 할당하고 즉시 클레임 해야 한다.
+		//dst에 복사된 페이지들을 frame에다 새로 할당 해준다
+		//lazy_load 고려해야한다
+		//spt내에 있는 pml4 즉, src 내에 있는 pml4와 dst내에 있는 Pml4는 각각 독립적이다.
+		spt_find_page(src, *va)
+		spt_insert_page(dst, //src내에서 찾은 page)
+		vm_alloc_page_with_initializer
+		
+		
 }
 
 /* 보조 페이지 테이블이 보유한 자원을 해제합니다. */
