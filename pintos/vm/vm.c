@@ -353,4 +353,22 @@ void
 supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
 	/* TODO: 스레드가 보유한 모든 supplemental_page_table을 파괴하고,
 	 * TODO: 수정된 모든 내용을 저장소에 다시 씁니다. */
+	hash_destroy(spt->hash_pages, spt_destroy_page);
+/*hash_destroy 호출
+  - spt 테이블을 순회하며
+	lock_acquire(&frame_table_lock);
+	list_remove(&frame->elem);
+	lock_release(&frame_table_lock);
+
+	pml4_clear_page
+
+	palloc_free_page(frame->kva);
+
+	frame->page = NULL;
+	page->frame = NULL;
+
+	free(frame);
+	- vm_dealloc_page 호출
+ */
+	
 }
