@@ -25,7 +25,7 @@ void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
 static struct fd_entry *find_fd_entry (int fd);
 static bool is_valid_ptr (const void *ptr);
-static bool is_valid_buffer (const void *buffer, int size);
+static bool is_valid_buffer (const void *buffer, int size, bool writable);
 static bool is_valid_string (const char *str);
 static bool copy_user_string_to_page (const char *src, char *dst);
 static void sys_exit (int status);
@@ -65,12 +65,18 @@ is_valid_ptr (const void *ptr) {
 	return spt_find_page(&thread_current()->spt, ptr);
 }
 
+// vm-write-code2 test에서 writable 을 check 하지 않음.
+// 그래서 read-only 인 코드 영역에 write 하려고 해서 실패함.
+// 로직 수정 필요해서 인자 'bool writable' 추가..
 static bool
-is_valid_buffer (const void *buffer, int size) {
+is_valid_buffer (const void *buffer, int size, bool writable) {
+	// size가 음수면 안 됨.
 	if (size < 0)
 		return false;
+	// size가 0이면 실제로 접근할 메모리가 없어서 valid.
 	if (size == 0)
 		return true;
+	// buffer가 NULL이면 안 됨.
 	if (buffer == NULL)
 		return false;
 
@@ -79,14 +85,61 @@ is_valid_buffer (const void *buffer, int size) {
 	if (end < start)
 		return false;
 
-	for (uint64_t page = (uint64_t) pg_round_down ((void *) start);
-			page <= end;
-			page += PGSIZE) {
-		if (!is_valid_ptr ((const void *) page))
-		{
-			return false;
+	// buffer가 걸쳐 있는 모든 페이지 검사.
+	for (uint64_t page = (uint64_t) pg_round_down ((void *) start); page <= end; page += PGSIZE) {
+		// is_valid_ptr()로 감싸면 안 됨.
+		// 코드 페이지처럼 SPT에는 존재하지만 writable == false인 페이지는
+		// is_valid_ptr()가 true라서 아래 writable 검사를 건너뛰게 된다.
+		// read()의 목적지 버퍼는 반드시 writable이어야 하므로,
+		// spt_find_page()로 page 구조체를 직접 얻은 뒤 항상 writable 여부를 검사해야 한다.
+		struct page *p = spt_find_page (&thread_current()->spt, (void *) page);
+			
+		// spt에 page가 없는데? -> 없을 수 있지.
+		// stack_growth 조건에 맞는 주소라면 stack page 생성 가능하니깐..
+		if (p == NULL) {
+			void *rsp = (void *) thread_current ()->user_rsp;
+			// 디버깅용
+			// printf ("buffer page missing: page=%p buffer=%p size=%d user_rsp=%p\n",
+			
+			// 로직 수정
+			// 1. 유저 주소가 아니면 stack growth 조건이 아니니깐 false로 바로 리턴.
+			if (!is_user_vaddr ((void *) page)) {
+				return false;
+			}
+			// 2. stack growth가 가능한 주소라면, stack page 생성 or page fault 처리 허용
+			// 일단 stack growth로 인정할 수 있는 주소인지 확인.
+			// a. USER_STACK 아래여야 함.
+			// b. 최대 stack 크기 안이어야 함.
+			// c. 현재 user rsp 근처여야 함.
+			if ((void *) page < USER_STACK &&
+				(void *) page >= USER_STACK - STACK_MAX &&
+				(void *) page >= rsp - 8) {
+				// stack page는 파일에서 온 페이지가 아니므로 anonymous page.
+				// page는 이미 pg_round_down 된 주소라 그대로 넣어도 됨.
+				if (!vm_alloc_page (VM_ANON, (void *) page, true))
+					return false;
+
+				// syscall 안에서 바로 접근할 버퍼라 실제 frame까지 claim.
+				if (!vm_claim_page ((void *) page))
+					return false;
+
+				// 생성 후 다시 SPT에서 page를 찾아서 아래 writable 검사를 이어감.
+				p = spt_find_page (&thread_current ()->spt, (void *) page);
+				if (p == NULL)
+					return false;
+			} else {
+				// stack growth 조건도 안 맞으면 진짜 invalid 주소.
+				return false;
+			}
 		}
+		// read()의 목적지 buffer처럼 커널이 유저 buffer에 써야 하는 경우,
+		// 해당 page가 writable이어야 함.
+		// 이 검사가 없으면 pt-write-code2에서 코드 영역에 write하는 걸 못 막음.
+		if (writable && !p->writable)
+			return false;
 	}
+
+	// buffer가 걸친 모든 page가 조건을 통과했으면 valid.
 	return true;
 }
 
@@ -243,17 +296,23 @@ syscall_handler (struct intr_frame *f) {
 			int fd = (int) f->R.rdi;
 			char *buf = (char *) f->R.rsi;
 			int size = (int) f->R.rdx;
-			if (!is_valid_buffer (buf, size))
+			// 버퍼가 유효한지 체크. 
+			// SYS_READ는 writable 해야하니까 writable = true로 넘겨줌.
+			if (!is_valid_buffer (buf, size, true))
 				sys_exit (-1);
 
 			if (size == 0) {
 				f->R.rax = 0;
+				// 디버깅용
+				// printf("read 0 bytes from fd %d\n", fd);
 				break;
 			}
 
 			struct fd_entry *fd_entry = find_fd_entry (fd);
 			if (fd_entry == NULL) {
 				f->R.rax = -1;
+				// 디버깅용
+				// printf("fd_entry is NULL\n");
 				break;
 			}
 
@@ -261,15 +320,21 @@ syscall_handler (struct intr_frame *f) {
 				for (int i = 0; i < size; i++)
 					buf[i] = input_getc ();
 				f->R.rax = size;
+				// 디버깅용
+				// printf("read %d bytes from fd %d\n", (int) f->R.rax, fd);
 				break;
 			}
 
 			if (fd_entry->sfd->type == STDOUT_FILENO) {
 				f->R.rax = -1;
+				// 디버깅용
+				// printf("attempted to read from stdout\n");
 				break;
 			}
 
 			f->R.rax = file_read (fd_entry->sfd->file, buf, size);
+			// 디버깅용	
+			// printf("read %d bytes from fd %d\n", (int) f->R.rax, fd);
 			break;
 		}
 		case SYS_WRITE:
@@ -277,24 +342,30 @@ syscall_handler (struct intr_frame *f) {
 			int fd = (int) f->R.rdi;
 			char *buf = (char *) f->R.rsi;
 			int size = (int) f->R.rdx;
-			if (buf == NULL || !is_valid_buffer (buf, size))
+			// 버퍼가 유효한지 체크. 
+			// SYS_WRITE는 read-only 해야하니까 writable = false로 넘겨줌.
+			if (buf == NULL || !is_valid_buffer (buf, size, false))
 				sys_exit (-1);
-
-
 
 			struct fd_entry *entry = find_fd_entry (fd);
 			if (entry == NULL) {
 				f->R.rax = -1;
+				// 디버깅용
+				// printf("fd_entry is NULL\n");
 				break;
 			}
 			if (entry->sfd->type == STDOUT_FILENO) {
 				putbuf (buf, size);
 				f->R.rax = size;
+				// 디버깅용
+				// printf("write %d bytes to fd %d\n", (int) f->R.rax, fd);
 				break;
 			}
 			if (entry->sfd->type == FILE_TYPE)
 			{
 				f->R.rax = file_write(entry->sfd->file, buf, size);
+				// 디버깅용
+				// printf("write %d bytes to fd %d\n", (int) f->R.rax, fd);
 			}
 			break;
 		}
