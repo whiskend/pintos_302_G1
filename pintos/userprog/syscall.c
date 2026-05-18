@@ -475,10 +475,10 @@ syscall_handler (struct intr_frame *f) {
 			int fd = f->R.r10;
 			off_t offset = f->R.r8;
 			
-			
+			struct file *file = find_fd_entry(fd);
+			do_mmap (addr, length, writable, file, offset);
 
 			break;
-
 		}
 		default:
 			sys_exit (-1);
