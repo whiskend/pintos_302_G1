@@ -172,19 +172,39 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 static struct frame *
 vm_get_victim (void) {
 	struct frame *victim = NULL;
+	uint64_t pml4 = thread_current()->pml4;
 	 /* TODO: 축출 정책은 직접 정합니다. */
-
-	return victim;
+	for (struct list_elem *e = list_begin (&frame_table);
+	e != list_end (&frame_table); e = list_next (e)) {
+		struct frame *temp = list_entry(e, struct frame, elem);
+		if (pml4_is_accessed(pml4, temp->kva)) {
+			pml4_set_accessed(pml4, temp->kva, false);
+		}
+		else {
+			pml4_set_accessed(pml4, temp->kva, true);
+			return victim;
+		}
+	}
+	return NULL;
 }
 
 /* 페이지 하나를 축출하고 해당 프레임을 반환합니다.
  * 오류 시 NULL을 반환합니다. */
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
+	struct frame *victim = vm_get_victim ();
+	ASSERT(victim != NULL)
+	uint64_t pml4 = thread_current()->pml4;
 	/* TODO: victim을 스왑 아웃하고 축출된 프레임을 반환합니다. */
+	swap_out(victim->page);
 
-	return NULL;
+	// 프레임 테이블 축출
+	list_remove(&victim->elem);
+	// pml4 페이지 클리어
+	pml4_clear_page(pml4, victim->kva);
+
+	// 프레임 
+	return victim;
 }
 
 /* palloc()을 호출해 프레임을 가져옵니다. 사용 가능한 페이지가 없으면 페이지를
@@ -197,17 +217,19 @@ vm_get_frame (void) {
 	
 	void *kva = palloc_get_page(PAL_USER);
 	if (kva == NULL) {
-		return NULL;
+		frame = vm_evict_frame();
+	}
+	else {
+		frame = malloc (sizeof *frame);
+	
+		if (frame == NULL) {
+			palloc_free_page(kva);
+			return NULL;
+		}
+		frame->kva = kva;
+		frame->page = NULL;
 	}
 
-	frame = malloc (sizeof *frame);
-	
-	if (frame == NULL) {
-		palloc_free_page(kva);
-		return NULL;
-	}
-	frame->kva = kva;
-	frame->page = NULL;
 	lock_acquire(&frame_table_lock);
 	list_push_back(&frame_table, &frame->elem);
 	lock_release(&frame_table_lock);
@@ -316,7 +338,6 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 }
-
 
 static bool hash_va_less(const struct hash_elem *a,
 		const struct hash_elem *b,
