@@ -98,8 +98,8 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 		// 까딱하면 여기서 부터 터질 듯...
 		struct page *page = malloc(sizeof (struct page));
 		if(page == NULL) {
-			return false;
 			printf("page malloc 실패\n");
+			return false;
 		}
 
 		// if(aux != NULL) {
@@ -169,7 +169,6 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	free(page->frame);
 	//이건 원래 있던 거.
 	vm_dealloc_page (page);
-	return true;
 }
 
 /* 축출할 struct frame을 가져옵니다. */
@@ -391,8 +390,6 @@ static uint64_t hash_func(const struct hash_elem *e, void *aux) {
 	const struct page *p = hash_entry (e, struct page, hash_elem);
 	return hash_bytes (&p->va, sizeof p->va);
 }
-
-// static 
 
 /* 새 보조 페이지 테이블을 초기화합니다. */
 void
