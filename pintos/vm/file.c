@@ -50,6 +50,17 @@ file_backed_destroy (struct page *page) {
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
+	ASSERT(addr == NULL);
+	ASSERT(file == NULL);
+	ASSERT(length == 0);
+	/* length bytes를 fd로 열린 파일에서 offset byte부터 프로세스(process)의 가상 주소 공간 addr에 매핑합니다. 전체 파일은 addr에서 시작하는 연속적인 가상 페이지에 매핑됩니다. 파일 길이가 PGSIZE의 배수가 아니면 마지막으로 매핑된 페이지의 일부 bytes가 파일 끝을 넘어 "삐져나옵니다". 이 페이지에서 페이지 폴트(page fault)가 발생해 메모리로 읽어 들일 때 해당 bytes를 0으로 설정하고, 페이지를 디스크에 다시 쓸 때는 버립니다. 성공하면 이 함수는 파일이 매핑된 가상 주소를 반환합니다. 실패하면 파일 매핑에 유효한 주소가 아닌 NULL을 반환해야 합니다. */
+	
+	if (!vm_alloc_page(VM_FILE, addr, writable)) {
+		return;
+	}
+	if (length < PGSIZE) {
+		zero_bytes = PGSIZE - length;
+	}
 }
 
 /* munmap을 수행합니다. */
