@@ -27,6 +27,11 @@ rollback -> 실패 시 원상복구
 #include "vm/inspect.h"
 #include "kernel/hash.h"
 #include "threads/vaddr.h"
+#include "kernel/hash.h"
+#include "userprog/process.h"
+#include "userprog/process.c"
+#include "lib/string.h"
+#include "vm/uninit.h"
 
 struct lock frame_table_lock;
 struct list frame_table;
@@ -146,7 +151,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 	/* TODO: 이 함수를 채웁니다. */
 	//해당 가상 주소가 주어진 보조 페이지 테이블에 존재하지 않는지 확인해야함.
 	//hash_insert를 참고해보자.
-	//page의 hash_elem과 spt의 hash_elem 비교.
+	//page의 hash_elem과 spt의 hash_elem 비교. -> 이거 맞나요?
 	if(hash_insert(spt->hash_pages, &page->hash_elem) == NULL) {
 		success = true;
 	}
@@ -154,7 +159,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 		success = false;
 		printf("hash_insert 실패\n");
 	}
-	//hash_entry()
+	//hash_entry() -> 이건 안쓰는거죠?
 	return success;
 }
 
@@ -333,6 +338,8 @@ static uint64_t hash_func(const struct hash_elem *e, void *aux) {
 	return hash_bytes (&p->va, sizeof p->va);
 }
 
+static 
+
 /* 새 보조 페이지 테이블을 초기화합니다. */
 void
 supplemental_page_table_init (struct supplemental_page_table *spt) {
@@ -346,15 +353,43 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src) {
+		//dst의 spt
 		//src의 보조 페이지 테이블에 있는 각 페이지를 순회하여 dst의 보조 페이지 테이블에 엔트리를 정확히 복사. uninit 페이지를 할당하고 즉시 클레임 해야 한다.
 		//dst에 복사된 페이지들을 frame에다 새로 할당 해준다
 		//lazy_load 고려해야한다
 		//spt내에 있는 pml4 즉, src 내에 있는 pml4와 dst내에 있는 Pml4는 각각 독립적이다.
-		spt_find_page(src, *va)
-		spt_insert_page(dst, //src내에서 찾은 page)
-		vm_alloc_page_with_initializer
-		
-		
+		//struct hash_elem *s = src->hash_elem; -> 이건 필요없어 보여서 일단 주석처리함.
+		struct page *page_s; //src에서 순회한 뒤 hash_entry로 해서 꺼낸 page
+		struct hash_iterator i;
+		hash_first(&i, src->hash_pages);
+		while (hash_next(&i)) {
+			page_s = hash_entry(hash_cur(&i), struct page, hash_elem);
+			if (page_s->operations->type == VM_UNINIT) {
+				if(!vm_alloc_page_with_initializer(page_s->uninit.type, page_s->va, page_s->writable, page_s->uninit.init, page_s->uninit.aux))
+					return false;
+			}
+			else {
+				if(page_s->operations->type == VM_ANON) {
+					if(!vm_alloc_page(VM_ANON, page_s->va, page_s->writable))
+						return false;
+					if(!vm_claim_page(page_s->va))
+						return false;
+					struct page *page_dst;
+					page_dst = spt_find_page(dst, page_s->va);
+					memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
+				}
+				if(page_s->operations->type ==VM_FILE) {
+					if(!vm_alloc_page(VM_FILE, page_s->va, page_s->writable))
+						return false;
+					if(!vm_claim_page(page_s->va))
+						return false;
+					struct page *page_dst;
+					page_dst = spt_find_page(dst, page_s->va);
+					memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
+				}
+			}
+		};
+		return true;
 }
 
 /* 보조 페이지 테이블이 보유한 자원을 해제합니다. */
