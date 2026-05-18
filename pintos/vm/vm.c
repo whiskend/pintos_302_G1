@@ -245,9 +245,9 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* 성공 시 true를 반환합니다. */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write , bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+vm_try_handle_fault (struct intr_frame *f, void *addr,
+		bool user, bool write , bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = NULL;
 	void *rsp;
 
@@ -335,7 +335,7 @@ vm_dealloc_page (struct page *page) {
 
 /* VA에 할당된 페이지를 claim합니다. */
 bool
-vm_claim_page (void *va UNUSED) {
+vm_claim_page (void *va) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채웁니다. */
 	page = spt_find_page(&thread_current()->spt, va);
@@ -423,6 +423,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 				if(page_s->operations->type == VM_ANON) {
 					if(!vm_alloc_page(VM_ANON, page_s->va, page_s->writable))
 						return false;
+					struct frame * frame_dst = vm_get_frame();
 					if(!vm_claim_page(page_s->va))
 						return false;
 					struct page *page_dst;
@@ -432,6 +433,7 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 				if(page_s->operations->type ==VM_FILE) {
 					if(!vm_alloc_page(VM_FILE, page_s->va, page_s->writable))
 						return false;
+					struct frame * frame_dst = vm_get_frame();
 					if(!vm_claim_page(page_s->va))
 						return false;
 					struct page *page_dst;

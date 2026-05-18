@@ -168,7 +168,7 @@ struct fork_info {
 /* 현재 프로세스를 `name`으로 복제합니다. 새 프로세스의 thread id를 반환하며,
  * 스레드를 만들 수 없으면 TID_ERROR를 반환합니다. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+process_fork (const char *name, struct intr_frame *if_) {
 	/* 현재 스레드를 새 스레드로 복제합니다. */
 	struct fork_info *fi = malloc (sizeof (struct fork_info));
 	if (fi == NULL) {
