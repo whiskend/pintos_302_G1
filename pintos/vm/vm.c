@@ -29,7 +29,6 @@ rollback -> 실패 시 원상복구
 #include "threads/vaddr.h"
 #include "kernel/hash.h"
 #include "userprog/process.h"
-#include "userprog/process.c"
 #include "lib/string.h"
 #include "vm/uninit.h"
 
@@ -393,7 +392,7 @@ static uint64_t hash_func(const struct hash_elem *e, void *aux) {
 	return hash_bytes (&p->va, sizeof p->va);
 }
 
-static 
+// static 
 
 /* 새 보조 페이지 테이블을 초기화합니다. */
 void
