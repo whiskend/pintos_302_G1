@@ -53,17 +53,14 @@ static bool
 anon_swap_in (struct page *page, void *kva) {
 	if (page == NULL || kva == NULL)
 		return false;
-
 	struct anon_page *anon_page = &page->anon;
 	// 쫓겨났던 데이터가 다시 필요해지면, 기록해 둔 슬롯 번호를 보고 스왑 디스크에서 메모리로 데이터를 읽어온다.
 	if(anon_page == NULL || !anon_page->swapped)
 		return false;
-
 	// TODO: 세 번째 인자 Buffer 자리에 kva가 오는게 맞나? 확인 필요
 	disk_read(swap_disk, anon_page->index, kva);
 	// 그리고 비트맵은 비었다고 다시 표시 -> 더티 비트 0로 활성화
 	bitmap_reset(swap_bit, anon_page->index);
-
 	anon_page->swapped = false;
 }
 
@@ -77,10 +74,9 @@ anon_swap_out (struct page *page) {
 	if (anon_page == NULL || anon_page->swapped)
 		return false;
 	
-	// 메모리가 꽉차서 페이지를 쫓아낼 때 사용
+		// 메모리가 꽉차서 페이지를 쫓아낼 때 사용
 	// 비트맵을 확인해서 빈 스왑 슬롯을 찾는다.
 	size_t idx;
-
 	if (!(idx = bitmap_scan(swap_bit, 0, 1, false)))
 		return false;
 	
@@ -89,7 +85,6 @@ anon_swap_out (struct page *page) {
 	disk_write(swap_disk, idx, page->frame->kva);
 	// 나중에 다시 찾을 수 있도록 페이지 안에 슬롯 번호를 기록
 	bitmap_mark(swap_bit, idx);
-	
 	anon_page->index = idx;
 	anon_page->swapped = true;
 }
@@ -99,10 +94,7 @@ static void
 anon_destroy (struct page *page) {
 	struct anon_page *anon_page = &page->anon;
 	size_t idx;
-
 	if ((idx = bitmap_scan(swap_bit, 0, 1, false))) {
 		bitmap_reset(swap_bit, idx);
 	}
-		
-	free(anon_page);
 }
