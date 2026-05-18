@@ -475,11 +475,18 @@ syscall_handler (struct intr_frame *f) {
 			int fd = f->R.r10;
 			off_t offset = f->R.r8;
 			
-			if(!is_user_vaddr(addr)){
+			if (!is_user_vaddr (addr)) {
 				f->R.rax = -1;
 				break;
 			}
-			struct file *file = find_fd_entry(fd);
+			pg_round_down (addr);
+
+			if (fd == STDIN_FILENO || fd == STDOUT_FILENO) {
+				f->R.rax = -1;
+				break;
+			}
+
+			struct file *file = find_fd_entry (fd);
 			do_mmap (addr, length, writable, file, offset);
 
 			break;
