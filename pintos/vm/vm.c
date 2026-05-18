@@ -27,6 +27,7 @@ rollback -> 실패 시 원상복구
 #include "vm/inspect.h"
 #include "kernel/hash.h"
 #include "threads/vaddr.h"
+#include "threads/interrupt.h"
 
 struct lock frame_table_lock;
 struct list frame_table;
@@ -218,8 +219,21 @@ vm_get_frame (void) {
 }
 
 /* 스택을 확장합니다. */
-static void
-vm_stack_growth (void *addr UNUSED) {
+/* syscall.c에서 써야 해서 static 제거 */
+void
+vm_stack_growth (void *addr) {
+	// fault가 난 주소를 기점으로 페이지 경계로 내리기.
+	void *upage = pg_round_down(addr);
+	// 디버깅용
+	// printf ("vm_stack_growth: addr=%p upage=%p\n", addr, upage);
+
+	// bool ok = vm_alloc_page (VM_ANON, upage, true);
+	// printf ("vm_alloc_page stack result=%d\n", ok);
+	// 그리고 그 주소에다가 ANON 페이지 만들기.
+	vm_alloc_page (VM_ANON, upage, true);
+	// 만든 페이지를 바로 CLAIM하기.. 해줘야 하는데,
+	// vm_try_handle_fault()에서도 claim을 해주니깐.. 여기서 지움.
+	// vm_claim_page (upage);
 }
 
 /* 쓰기 보호된 페이지에서 발생한 폴트를 처리합니다. */
@@ -233,21 +247,63 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 		bool user UNUSED, bool write , bool not_present UNUSED) {
 	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
 	struct page *page = NULL;
+	void *rsp;
+
+	if (user) {
+		// 유저모드에서 fault 났을 때.
+		rsp = (void *) f->rsp;
+		/*디버깅용 코드*/
+		// printf("user mode fault, rsp: %p\n", rsp);
+	} else {
+		// 커널모드에서 fault 났을 때.
+		// syscall 처리 중에 유저 주소 건들면 fault가 날 수 잇음..
+		// 근데 f->rsp는 커널 스택 포인터라... stack growth(유저 스택 늘리기..라서..) 판단에 쓰면 안 된다.
+		// 그래서 syscall 진입할 때 user_rsp 저장해뒀다가 씀.
+		rsp = (void *) thread_current()->user_rsp;
+		/*디버깅용 코드*/
+		// printf ("fault addr=%p user=%d write=%d not_present=%d rsp=%p\n",
+        // addr, user, write, not_present, rsp);
+	}
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
 
-	
-	if (addr == NULL)
+	if (addr == NULL) {
+		// printf ("addr is NULL\n");
 		goto fail;
-	if (is_kernel_vaddr(addr))
+	}
+	if (is_kernel_vaddr(addr)) {
+		// printf ("addr is kernel vaddr\n");
 		goto fail;
-	if(!not_present)
+	}
+	if (!not_present) {
+		// printf ("page is present\n");
 		goto fail;
+	}		
 	page = spt_find_page(spt, addr);
-	if(page == NULL)
+	// printf ("spt_find_page: %p\n", page);
+	if (page == NULL) {
+		// 다음 조건을 만족해야 stack_growth로 넘어감.
+		if (addr != NULL &&
+		// 1. addr가 user addr인지?
+		is_user_vaddr(addr) &&
+		// 2. addr가 USER_STACK 아래인지?
+		addr < USER_STACK &&
+		// 3. 너무 많이 자라지는 않았는지?
+		addr >= USER_STACK - STACK_MAX &&
+		// 4. addr >= rsp - 8 정도인지?
+		addr >= rsp - 8 ) {
+		// 하나라도 만족 못하면 goto fail.
+			vm_stack_growth (addr);	
+			page = spt_find_page (&thread_current()->spt, addr);
+		} else {
+			// printf("Stack growth conditions not met\n");
+			goto fail;
+		}
+	}
+	if (write && !page->writable) {
+		// printf ("write access to read-only page\n");
 		goto fail;
-	if(write && !page->writable)
-		goto fail;
+	}
 
 	return vm_do_claim_page (page);
 	fail:
