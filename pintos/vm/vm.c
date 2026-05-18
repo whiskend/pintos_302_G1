@@ -392,9 +392,34 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 		return true;
 }
 
+static void
+spt_destroy_page (struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry (e, struct page, hash_elem);
+
+	if (page->frame != NULL) {
+		struct frame *frame = page->frame;
+		
+		pml4_clear_page (thread_current()->pml4, page->va);
+
+		lock_acquire (&frame_table_lock);
+		list_remove (&frame->elem);
+		lock_release (&frame_table_lock);
+
+		palloc_free_page (frame->kva);
+
+		frame->page = NULL;
+		page->frame = NULL;
+
+		free (frame);
+		}
+	vm_dealloc_page (page);
+}
+
 /* 보조 페이지 테이블이 보유한 자원을 해제합니다. */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: 스레드가 보유한 모든 supplemental_page_table을 파괴하고,
 	 * TODO: 수정된 모든 내용을 저장소에 다시 씁니다. */
+	hash_destroy (spt->hash_pages, spt_destroy_page);
+	free (spt->hash_pages);
 }
