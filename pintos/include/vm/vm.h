@@ -65,6 +65,7 @@ struct page {
 	};
 
 	struct hash_elem hash_elem;
+	struct lazy_aux *aux;
 	
 	bool writable;
 };
@@ -73,6 +74,7 @@ struct page {
 struct frame {
 	void *kva;
 	struct page *page;
+	struct thread *owner;
 	struct list_elem elem;
 };
 
