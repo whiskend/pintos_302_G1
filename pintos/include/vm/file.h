@@ -1,12 +1,13 @@
 #ifndef VM_FILE_H
 #define VM_FILE_H
+#include <stdbool.h>
 #include "filesys/file.h"
-#include "vm/vm.h"
 
 struct page;
 enum vm_type;
 
 struct file_page {
+	bool swapped;
 };
 
 void vm_file_init (void);
