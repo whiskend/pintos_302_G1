@@ -77,9 +77,11 @@ do_mmap (void *addr, size_t length, int writable,
 	ASSERT(length != 0);
 
 	file = file_reopen(file);
+
+	void *start = addr;
 	
-	uint32_t read_bytes = (length / PGSIZE) + PGSIZE;
-	uint32_t zero_bytes = length - read_bytes;
+	uint32_t read_bytes = length;
+	uint32_t zero_bytes = PGSIZE - length % PGSIZE;
 	
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (addr) == 0);
@@ -104,6 +106,8 @@ do_mmap (void *addr, size_t length, int writable,
 		addr += PGSIZE;
 		offset += page_read_bytes;
 	}
+
+	return start;
 }
 
 /* munmap을 수행합니다. */

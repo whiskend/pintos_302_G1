@@ -485,9 +485,11 @@ syscall_handler (struct intr_frame *f) {
 			addr = pg_round_down (addr);
 
 			struct fd_entry *fd_entry = find_fd_entry (fd);
+			if (fd_entry == NULL)
+				goto fail;
 			struct file *file = fd_entry->sfd->file;
-			do_mmap (addr, length, writable, file, offset);
 
+			f->R.rax = do_mmap (addr, length, writable, file, offset);
 			break;
 
 			fail:
