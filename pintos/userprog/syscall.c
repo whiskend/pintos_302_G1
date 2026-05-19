@@ -475,21 +475,23 @@ syscall_handler (struct intr_frame *f) {
 			int fd = f->R.r10;
 			off_t offset = f->R.r8;
 			
-			if (!is_user_vaddr (addr)) {
-				f->R.rax = -1;
-				break;
-			}
+			if (!is_user_vaddr (addr)) 
+				goto fail;
+
+			if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
+				goto fail;
+
 			pg_round_down (addr);
 
-			if (fd == STDIN_FILENO || fd == STDOUT_FILENO) {
-				f->R.rax = -1;
-				break;
-			}
-
-			struct file *file = find_fd_entry (fd);
+			struct fd_entry *fd_entry = find_fd_entry (fd);
+			struct file *file = fd_entry->sfd->file;
 			do_mmap (addr, length, writable, file, offset);
 
 			break;
+			fail:
+				f->R.rax = -1;
+				break;
+
 		}
 		default:
 			sys_exit (-1);
