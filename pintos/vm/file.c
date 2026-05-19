@@ -95,9 +95,8 @@ length bytes를 fd로 열린 파일에서 offset byte부터 프로세스(process
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
-	ASSERT(addr != NULL);
-	ASSERT(file != NULL);
-	ASSERT(length != 0);
+	if (addr == NULL || file == NULL || length == NULL)
+			return NULL;
 
 	file = file_reopen(file);
 
@@ -109,9 +108,11 @@ do_mmap (void *addr, size_t length, int writable,
 		zero_bytes = PGSIZE - length % PGSIZE;
 	}
 	
-	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
-	ASSERT (pg_ofs (addr) == 0);
-	ASSERT (offset % PGSIZE == 0);
+	if ((read_bytes + zero_bytes) % PGSIZE != 0 || pg_ofs (addr) != 0 || offset % PGSIZE != 0){
+		file_close(file);
+		return NULL;
+	}
+			
 
 	while (read_bytes > 0 || zero_bytes > 0) {
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
