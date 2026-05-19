@@ -467,6 +467,37 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 		}
+		case SYS_MMAP:
+		{
+			void *addr = f->R.rdi;
+			size_t length = f->R.rsi;
+			int writable = f->R.rdx;
+			int fd = f->R.r10;
+			off_t offset = f->R.r8;
+
+			if (!is_user_vaddr (addr)) 
+				goto fail;
+			if (length == NULL)
+				goto fail;
+			if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
+				goto fail;
+			if (spt_find_page(&thread_current()->spt, addr))
+				goto fail;
+
+			addr = pg_round_down (addr);
+
+			struct fd_entry *fd_entry = find_fd_entry (fd);
+			if (fd_entry == NULL)
+				goto fail;
+			struct file *file = fd_entry->sfd->file;
+
+			f->R.rax = do_mmap (addr, length, writable, file, offset);
+			break;
+
+			fail:
+				f->R.rax = -1;
+				break;
+		}
 		default:
 			sys_exit (-1);
 			break;
