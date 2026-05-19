@@ -171,19 +171,25 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 /* 축출할 struct frame을 가져옵니다. */
 static struct frame *
 vm_get_victim (void) {
-	struct frame *victim = NULL;
-	uint64_t pml4 = thread_current()->pml4;
 	 /* TODO: 축출 정책은 직접 정합니다. */
 	for (struct list_elem *e = list_begin (&frame_table);
 	e != list_end (&frame_table); e = list_next (e)) {
 		struct frame *temp = list_entry(e, struct frame, elem);
-		if (pml4_is_accessed(pml4, temp->kva)) {
-			pml4_set_accessed(pml4, temp->kva, false);
+		if (temp->page == NULL || temp->owner == NULL)
+			continue;
+		if (pml4_is_accessed(temp->owner->pml4, temp->page->va)) {
+			pml4_set_accessed(temp->owner->pml4, temp->page->va, false);
 		}
 		else {
-			pml4_set_accessed(pml4, temp->kva, true);
-			return victim;
+			return temp;
 		}
+	}
+
+	for (struct list_elem *e = list_begin (&frame_table);
+	e != list_end (&frame_table); e = list_next (e)) {
+		struct frame *temp = list_entry(e, struct frame, elem);
+		if (temp->page != NULL && temp->owner != NULL)
+			return temp;
 	}
 	return NULL;
 }
@@ -192,16 +198,25 @@ vm_get_victim (void) {
  * 오류 시 NULL을 반환합니다. */
 static struct frame *
 vm_evict_frame (void) {
+	lock_acquire(&frame_table_lock);
 	struct frame *victim = vm_get_victim ();
-	ASSERT(victim != NULL)
-	uint64_t pml4 = thread_current()->pml4;
-	/* TODO: victim을 스왑 아웃하고 축출된 프레임을 반환합니다. */
-	swap_out(victim->page);
-
-	// 프레임 테이블 축출
+	ASSERT(victim != NULL);
 	list_remove(&victim->elem);
+	lock_release(&frame_table_lock);
+
+	/* TODO: victim을 스왑 아웃하고 축출된 프레임을 반환합니다. */
+	if (!swap_out(victim->page)) {
+		lock_acquire(&frame_table_lock);
+		list_push_back(&frame_table, &victim->elem);
+		lock_release(&frame_table_lock);
+		return NULL;
+	}
+
 	// pml4 페이지 클리어
-	pml4_clear_page(pml4, victim->kva);
+	pml4_clear_page(victim->owner->pml4, victim->page->va);
+	victim->page->frame = NULL;
+	victim->page = NULL;
+	victim->owner = NULL;
 
 	// 프레임 
 	return victim;
@@ -228,14 +243,19 @@ vm_get_frame (void) {
 		}
 		frame->kva = kva;
 		frame->page = NULL;
+		frame->owner = NULL;
 	}
+
+	if (frame == NULL)
+		return NULL;
+
+	ASSERT (frame != NULL);
+	ASSERT (frame->page == NULL);
 
 	lock_acquire(&frame_table_lock);
 	list_push_back(&frame_table, &frame->elem);
 	lock_release(&frame_table_lock);
 
-	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
 	return frame;
 }
 
@@ -278,6 +298,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 
 static void rollback_frame (struct page *page, struct frame *frame) {
 	frame->page = NULL;
+	frame->owner = NULL;
 	page->frame = NULL;
 
 	lock_acquire(&frame_table_lock);
@@ -321,6 +342,7 @@ vm_do_claim_page (struct page *page) {
 
 	/* 링크를 설정합니다. */
 	frame->page = page;
+	frame->owner = thread_current();
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */

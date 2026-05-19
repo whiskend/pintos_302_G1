@@ -893,7 +893,7 @@ static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
 	struct lazy_aux *lazy = (struct lazy_aux *) aux;
-	
+	page->aux = lazy;
 	if(page->frame->kva == NULL)
 		printf("kva NULL\n");
 	
@@ -904,7 +904,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	}
 	memset ((uint8_t *) page->frame->kva + lazy->read_bytes, 0, lazy->zero_bytes);
 
-	free(aux);
 	return true;
 	
 	/* TODO: 이 함수는 주소 VA에서 첫 page fault가 발생했을 때 호출됩니다. */
