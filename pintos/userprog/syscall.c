@@ -482,7 +482,7 @@ syscall_handler (struct intr_frame *f) {
 			if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
 				goto fail;
 
-			pg_round_down (addr);
+			addr = pg_round_down (addr);
 
 			struct fd_entry *fd_entry = find_fd_entry (fd);
 			struct file *file = fd_entry->sfd->file;
