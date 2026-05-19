@@ -146,7 +146,7 @@ dup2 (int oldfd, int newfd){
 }
 
 void *
-mmap (void *addr, size_t leng	th, int writable, int fd, off_t offset) {
+mmap (void *addr, size_t length, int writable, int fd, off_t offset) {
 	return (void *) syscall5 (SYS_MMAP, addr, length, writable, fd, offset);
 }
 

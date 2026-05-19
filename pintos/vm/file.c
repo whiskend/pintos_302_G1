@@ -1,9 +1,6 @@
 /* file.c: 메모리 기반 파일 객체(mmap된 객체)의 구현. */
 
 #include "vm/vm.h"
-#ifdef VM
-#include "userprog/process.h"
-#endif
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
