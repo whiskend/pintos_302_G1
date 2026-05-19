@@ -1,6 +1,5 @@
 #ifndef FILESYS_PAGE_CACHE_H
 #define FILESYS_PAGE_CACHE_H
-#include "vm/vm.h"
 
 struct page;
 enum vm_type;
