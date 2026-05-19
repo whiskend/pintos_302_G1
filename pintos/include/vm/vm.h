@@ -57,25 +57,15 @@ struct page {
 	const struct page_operations *operations;
 	void *va;              /* 사용자 공간 기준 주소 */
 	struct frame *frame;   /* 프레임에 대한 역참조 */
-	/* 직접 구현할 부분 */
 
-	/* 타입별 데이터는 union에 묶여 있습니다.
-	 * 각 함수는 현재 union을 자동으로 감지합니다. */
 	union {
 		struct uninit_page uninit;
 		struct anon_page anon;
 		struct file_page file;
-#ifdef EFILESYS
-		struct page_cache page_cache;
-#endif
 	};
 
-	// SPT를 순회하기 위한 해시 자료구조
 	struct hash_elem hash_elem;
 	
-	// 첫 페이지 폴트가 되어 있는지 확인하는 불 변수
-	// 읽기만 가능한 곳에 쓰기를 하면 비정상적인 페이지 폴트
-	// 해당 사항은 페이지 초기화 시 설정
 	bool writable;
 };
 
