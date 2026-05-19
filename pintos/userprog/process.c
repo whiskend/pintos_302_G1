@@ -890,7 +890,7 @@ install_page (void *upage, void *kpage, bool writable) {
 /* 여기서부터의 코드는 Project 3 이후에 사용됩니다.
  * Project 2에서만 사용할 함수를 구현하려면 위쪽 블록에 구현하세요. */
 
-static bool
+bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
 	struct lazy_aux *lazy = (struct lazy_aux *) aux;
@@ -942,7 +942,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		/* TODO: lazy_load_segment에 정보를 전달하도록 aux를 설정합니다. */
 		struct lazy_aux *aux = malloc(sizeof *aux);
 		aux->file = file;
-		aux->offset = ofs;
+		aux-> = ofs;
 		aux->read_bytes = page_read_bytes;
 		aux->zero_bytes = page_zero_bytes;
 

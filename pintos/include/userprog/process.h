@@ -11,3 +11,7 @@ void process_exit (void);
 void process_activate (struct thread *next);
 
 #endif /* userprog/process.h */
+
+#ifdef VM
+bool lazy_load_segment (struct page *page, void *aux);
+#endif

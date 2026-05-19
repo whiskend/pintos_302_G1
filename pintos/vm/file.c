@@ -1,6 +1,9 @@
 /* file.c: 메모리 기반 파일 객체(mmap된 객체)의 구현. */
 
 #include "vm/vm.h"
+#ifdef VM
+#include "userprog/process.h"
+#endif
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -46,20 +49,44 @@ file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
 }
 
-/* mmap을 수행합니다. */
+/* 
+mmap을 수행합니다. 
+length bytes를 fd로 열린 파일에서 offset byte부터 프로세스(process)의 가상 주소 공간 addr에 매핑합니다. 전체 파일은 addr에서 시작하는 연속적인 가상 페이지에 매핑됩니다. 파일 길이가 PGSIZE의 배수가 아니면 마지막으로 매핑된 페이지의 일부 bytes가 파일 끝을 넘어 "삐져나옵니다". 이 페이지에서 페이지 폴트(page fault)가 발생해 메모리로 읽어 들일 때 해당 bytes를 0으로 설정하고, 페이지를 디스크에 다시 쓸 때는 버립니다. 성공하면 이 함수는 파일이 매핑된 가상 주소를 반환합니다. 실패하면 파일 매핑에 유효한 주소가 아닌 NULL을 반환해야 합니다.
+*/
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
 	ASSERT(addr == NULL);
 	ASSERT(file == NULL);
 	ASSERT(length == 0);
-	/* length bytes를 fd로 열린 파일에서 offset byte부터 프로세스(process)의 가상 주소 공간 addr에 매핑합니다. 전체 파일은 addr에서 시작하는 연속적인 가상 페이지에 매핑됩니다. 파일 길이가 PGSIZE의 배수가 아니면 마지막으로 매핑된 페이지의 일부 bytes가 파일 끝을 넘어 "삐져나옵니다". 이 페이지에서 페이지 폴트(page fault)가 발생해 메모리로 읽어 들일 때 해당 bytes를 0으로 설정하고, 페이지를 디스크에 다시 쓸 때는 버립니다. 성공하면 이 함수는 파일이 매핑된 가상 주소를 반환합니다. 실패하면 파일 매핑에 유효한 주소가 아닌 NULL을 반환해야 합니다. */
 	
-	if (!vm_alloc_page(VM_FILE, addr, writable)) {
-		return;
-	}
-	if (length < PGSIZE) {
-		zero_bytes = PGSIZE - length;
+	uint32_t read_bytes = (length / PGSIZE) + PGSIZE;
+	uint32_t zero_bytes = length - read_bytes;
+	
+	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
+	ASSERT (pg_ofs (addr) == 0);
+	ASSERT (offset % PGSIZE == 0);
+
+	while (read_bytes > 0 || zero_bytes > 0) {
+		/* 이 페이지를 어떻게 채울지 계산합니다. FILE에서 PAGE_READ_BYTES 바이트를 읽고, 마지막 PAGE_ZERO_BYTES 바이트는 0으로 채웁니다. */
+		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+		size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+		/* TODO: lazy_load_segment에 정보를 전달하도록 aux를 설정합니다. */
+		struct lazy_aux *aux = malloc(sizeof *aux);
+		aux->file = file;
+		aux->offset = offset;
+		aux->read_bytes = page_read_bytes;
+		aux->zero_bytes = page_zero_bytes;
+
+		if (!vm_alloc_page_with_initializer (VM_FILE, addr, writable, lazy_load_segment, aux))
+			return false;
+
+		/* 다음 페이지로 이동합니다. */
+		read_bytes -= page_read_bytes;
+		zero_bytes -= page_zero_bytes;
+		addr += PGSIZE;
+		offset += page_read_bytes;
 	}
 }
 
