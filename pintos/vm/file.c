@@ -81,7 +81,10 @@ do_mmap (void *addr, size_t length, int writable,
 	void *start = addr;
 	
 	uint32_t read_bytes = length;
-	uint32_t zero_bytes = PGSIZE - length % PGSIZE;
+	uint32_t zero_bytes = 0;
+	if (length % PGSIZE != 0) {
+		zero_bytes = PGSIZE - length % PGSIZE;
+	}
 	
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (addr) == 0);
@@ -98,7 +101,7 @@ do_mmap (void *addr, size_t length, int writable,
 		aux->zero_bytes = page_zero_bytes;
 
 		if (!vm_alloc_page_with_initializer (VM_FILE, addr, writable, lazy_load_segment, aux))
-			return false;
+			return NULL;
 
 		/* 다음 페이지로 이동 */
 		read_bytes -= page_read_bytes;
