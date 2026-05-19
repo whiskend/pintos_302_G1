@@ -95,7 +95,7 @@ length bytes를 fd로 열린 파일에서 offset byte부터 프로세스(process
 void *
 do_mmap (void *addr, size_t length, int writable,
 		struct file *file, off_t offset) {
-	if (addr == NULL || file == NULL || length == NULL)
+	if (addr == NULL || file == NULL || length == 0)
 			return NULL;
 
 	file = file_reopen(file);

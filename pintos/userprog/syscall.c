@@ -481,7 +481,7 @@ syscall_handler (struct intr_frame *f) {
 				goto fail;
 			if (fd == STDIN_FILENO || fd == STDOUT_FILENO) 
 				goto fail;
-			if (!spt_find_page(thread_current()->spt, addr))
+			if (spt_find_page(&thread_current()->spt, addr))
 				goto fail;
 
 			addr = pg_round_down (addr);
