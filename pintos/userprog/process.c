@@ -395,6 +395,7 @@ process_exec (void *f_name) {
 
 	/* 먼저 현재 컨텍스트를 정리합니다. */
 	process_cleanup ();
+	supplemental_page_table_init (&thread_current ()->spt);
 
 	/* 그 다음 실행 파일을 로드합니다. */
 	success = load (arg, &_if);

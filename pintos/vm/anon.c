@@ -58,6 +58,7 @@ anon_swap_in (struct page *page, void *kva) {
 	if (page == NULL || kva == NULL)
 		return false;
 	struct anon_page *anon_page = &page->anon;
+
 	// 쫓겨났던 데이터가 다시 필요해지면, 기록해 둔 슬롯 번호를 보고 스왑 디스크에서 메모리로 데이터를 읽어온다.
 	if(anon_page == NULL || !anon_page->swapped)
 		return false;
