@@ -59,6 +59,8 @@ do_mmap (void *addr, size_t length, int writable,
 	ASSERT(addr == NULL);
 	ASSERT(file == NULL);
 	ASSERT(length == 0);
+
+	file = file_reopen(file);
 	
 	uint32_t read_bytes = (length / PGSIZE) + PGSIZE;
 	uint32_t zero_bytes = length - read_bytes;
@@ -68,12 +70,10 @@ do_mmap (void *addr, size_t length, int writable,
 	ASSERT (offset % PGSIZE == 0);
 
 	while (read_bytes > 0 || zero_bytes > 0) {
-		/* 이 페이지를 어떻게 채울지 계산합니다. FILE에서 PAGE_READ_BYTES 바이트를 읽고, 마지막 PAGE_ZERO_BYTES 바이트는 0으로 채웁니다. */
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-		/* TODO: lazy_load_segment에 정보를 전달하도록 aux를 설정합니다. */
-		struct lazy_aux *aux = malloc(sizeof *aux);
+		struct lazy_aux *aux = malloc(sizeof *aux); // lazy_load_segment에 정보를 전달하도록 aux를 설정
 		aux->file = file;
 		aux->offset = offset;
 		aux->read_bytes = page_read_bytes;
@@ -82,7 +82,7 @@ do_mmap (void *addr, size_t length, int writable,
 		if (!vm_alloc_page_with_initializer (VM_FILE, addr, writable, lazy_load_segment, aux))
 			return false;
 
-		/* 다음 페이지로 이동합니다. */
+		/* 다음 페이지로 이동 */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		addr += PGSIZE;
