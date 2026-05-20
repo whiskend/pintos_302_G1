@@ -495,7 +495,7 @@ syscall_handler (struct intr_frame *f) {
 			break;
 
 			fail:
-				f->R.rax = -1;
+				f->R.rax = NULL;
 				break;
 		}
 		case SYS_MUNMAP:
