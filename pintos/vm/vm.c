@@ -498,10 +498,10 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 					page_dst = spt_find_page(dst, page_s->va);				
 					
 					if (page_s->frame == NULL) {
-						return false;
-					} else {
-						memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
+						if (!vm_do_claim_page(page_s))
+							return false;	
 					}
+					memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
 				}
 			}
 		};
