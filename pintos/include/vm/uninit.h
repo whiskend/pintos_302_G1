@@ -13,8 +13,7 @@ struct uninit_page {
 	vm_initializer *init;
 	enum vm_type type;
 	void *aux;
-	/* struct page를 초기화하고 pa를 va에 매핑합니다. */
-	bool (*page_initializer) (struct page *, enum vm_type, void *kva);
+	bool (*page_initializer) (struct page *, enum vm_type, void *kva); // uninit이던 page를 진짜 page로 바꾸는 함수: anon_initializer() -> 이 page는 이제 anon page다 -> page->operations = &anon_ops
 };
 
 void uninit_new (struct page *page, void *va, vm_initializer *init,
