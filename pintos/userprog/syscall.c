@@ -504,7 +504,7 @@ syscall_handler (struct intr_frame *f) {
 
 			if (!is_user_vaddr (addr)) 
 				break;
-			if (spt_find_page(&thread_current()->spt, addr))
+			if (!spt_find_page(&thread_current()->spt, addr))
 				break;
 			
 			addr = pg_round_down (addr);
