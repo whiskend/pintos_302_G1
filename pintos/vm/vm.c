@@ -435,18 +435,11 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src) {
-		//dst의 spt
-		//src의 보조 페이지 테이블에 있는 각 페이지를 순회하여 dst의 보조 페이지 테이블에 엔트리를 정확히 복사. uninit 페이지를 할당하고 즉시 클레임 해야 한다.
-		//dst에 복사된 페이지들을 frame에다 새로 할당 해준다
-		//lazy_load 고려해야한다
-		//spt내에 있는 pml4 즉, src 내에 있는 pml4와 dst내에 있는 Pml4는 각각 독립적이다.
-		//struct hash_elem *s = src->hash_elem; -> 이건 필요없어 보여서 일단 주석처리함.
 		struct page *page_s; //src에서 순회한 뒤 hash_entry로 해서 꺼낸 page
 		struct hash_iterator i;
 		hash_first(&i, src->hash_pages);
 		while (hash_next(&i)) {
 			page_s = hash_entry(hash_cur(&i), struct page, hash_elem);
-			// printf("복사 중인 페이지 va: %p\n", page_s->va);
 			if (page_s->operations->type == VM_UNINIT) {
 				// 부모 aux, 자식 aux 분리..
 				struct lazy_aux *src_aux = page_s->uninit.aux;
@@ -465,7 +458,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 				}
 				// 이거 좀 수정해야 할 거 ㅏㅌ아ㅏ여,, aux 부모랑 자식이 같은 aux 포인터 써여..
 				if(!vm_alloc_page_with_initializer(page_s->uninit.type, page_s->va, page_s->writable, page_s->uninit.init, dst_aux)) {
-					// printf("vm_alloc_page_with_initializer 실패\n");
 					free (dst_aux);
 					return false;
 				}
@@ -473,50 +465,37 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 			else {
 				if(page_s->operations->type == VM_ANON) {
 					if(!vm_alloc_page(VM_ANON, page_s->va, page_s->writable)) {
-						// printf("vm_alloc_page 실패\n");
 						return false;
 					}
 					// 이거 어디에 써요?
-					// struct frame * frame_dst = vm_get_frame();
 					if(!vm_claim_page(page_s->va)) {
-						// printf("vm_claim_page 실패\n");
 						return false;
 					}
 					struct page *page_dst;
-					// printf("VM_ANON page_s->va: %p\n", page_s->va);
 					page_dst = spt_find_page(dst, page_s->va);
-					// printf("복사된 페이지 va: %p\n", page_dst->va);
 					// 이거 부모가 lazy면 터질 수 있지 않나요..? frame 때매 null 뜰건데..
 					if (page_s->frame == NULL) {
-						// printf("page_s->frame is NULL\n");
 						return false;
 					} else {
 						memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
-						// printf ("복사된 페이지 내용: %s\n", (char *) page_dst->frame->kva);
 					}
 				}
 				if(page_s->operations->type == VM_FILE) {
 					if(!vm_alloc_page(VM_FILE, page_s->va, page_s->writable)) {
-						// printf("vm_alloc_page 실패\n");
+
 						return false;
 					}
-					// struct frame * frame_dst = vm_get_frame();
 					if(!vm_claim_page(page_s->va)) {
-						// printf("vm_claim_page 실패\n");	
 						return false;
 					}
 					struct page *page_dst;
-					// printf ("VM_FILE page_s->va: %p\n", page_s->va);
 					page_dst = spt_find_page(dst, page_s->va);
-					// printf("복사된 페이지 va: %p\n", page_dst->va);
 					
 					
 					if (page_s->frame == NULL) {
-						// printf("page_s->frame is NULL\n");
 						return false;
 					} else {
 						memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
-						// printf("복사된 페이지 내용: %s\n", (char *) page_dst->frame->kva);
 					}
 				}
 			}
