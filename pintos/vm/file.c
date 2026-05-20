@@ -161,6 +161,8 @@ do_munmap (void *addr) {
 	}
 	// 2. VM_FILE인지 check. 근데 lazy한 상태라면 아직 VM_UNINIT 일 수 있음. 이에 타입 확인해야 함.
 	if (page_get_type (page) != VM_FILE) {
+		spt_remove_page(spt, page);
+		free(page->aux);
 		return;
 	}
 	

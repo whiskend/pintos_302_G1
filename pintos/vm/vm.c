@@ -155,7 +155,6 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	//page내의 포인터들을 free 시켜줘야 함.
 	hash_delete(spt->hash_pages, &page->hash_elem);
 	free(page->frame);
-	//이건 원래 있던 거.
 	vm_dealloc_page (page);
 }
 
