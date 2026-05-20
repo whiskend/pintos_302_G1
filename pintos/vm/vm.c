@@ -424,12 +424,6 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 bool
 supplemental_page_table_copy (struct supplemental_page_table *dst,
 		struct supplemental_page_table *src) {
-		//dst의 spt
-		//src의 보조 페이지 테이블에 있는 각 페이지를 순회하여 dst의 보조 페이지 테이블에 엔트리를 정확히 복사. uninit 페이지를 할당하고 즉시 클레임 해야 한다.
-		//dst에 복사된 페이지들을 frame에다 새로 할당 해준다
-		//lazy_load 고려해야한다
-		//spt내에 있는 pml4 즉, src 내에 있는 pml4와 dst내에 있는 Pml4는 각각 독립적이다.
-		//struct hash_elem *s = src->hash_elem; -> 이건 필요없어 보여서 일단 주석처리함.
 		struct page *page_s; //src에서 순회한 뒤 hash_entry로 해서 꺼낸 page
 		struct hash_iterator i;
 		hash_first(&i, src->hash_pages);
