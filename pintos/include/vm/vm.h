@@ -97,10 +97,6 @@ struct page_operations {
  * 이 구조체에 대해 특정 설계를 강제하지 않습니다.
  * 모든 설계는 직접 정하면 됩니다. */
 struct supplemental_page_table {
-	// 시작 주소만 있고 실행 내역이 없을 때, 진짜 페이지 폴트인지 여부 체크
-	// 스왑 아웃 쪽에 있는지? 레이지 로딩을 해야하는지? 아예 안올라와 있는지?
-	// 스왑 아웃에 있으면 스왑 인
-	// 해시 테이블
 	struct hash *hash_pages;
 };
 
@@ -124,7 +120,7 @@ bool vm_alloc_page_with_initializer (enum vm_type type, void *upage,
 		bool writable, vm_initializer *init, void *aux);
 void vm_dealloc_page (struct page *page);
 bool vm_claim_page (void *va);
-void vm_stack_growth (void *addr);
+bool vm_stack_growth (void *addr);
 enum vm_type page_get_type (struct page *page);
 
 #endif  /* VM_VM_H */
