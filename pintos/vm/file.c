@@ -93,8 +93,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	}
 	memset ((uint8_t *) page->frame->kva + lazy->read_bytes, 0, lazy->zero_bytes);
 
-	free(aux);
-
 	return true;
 }
 
@@ -112,8 +110,7 @@ do_mmap (void *addr, size_t length, int writable,
 	file = file_reopen(file);
 
 	void *start = addr;
-	
-	uint32_t read_bytes = length - (size_t)offset;
+	uint32_t read_bytes = file_length(file) - offset;
 	uint32_t zero_bytes = 0;
 	if (length % PGSIZE != 0) {
 		zero_bytes = PGSIZE - length % PGSIZE;
@@ -123,7 +120,6 @@ do_mmap (void *addr, size_t length, int writable,
 		file_close(file);
 		return NULL;
 	}
-			
 
 	while (read_bytes > 0 || zero_bytes > 0) {
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
