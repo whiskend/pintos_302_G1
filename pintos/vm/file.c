@@ -142,25 +142,44 @@ do_mmap (void *addr, size_t length, int writable,
 /* munmap을 수행합니다. */
 void
 do_munmap (void *addr) {
-	// munmap은 페이지를 해제하는 함수임. munmap이 호출되면, 해당 페이지가 SPT에서 제거되고, 페이지가 점유한 프레임이 해제되어야 함.
+	// munmap은 >>페이지<< 를 해제하는 함수임. munmap이 호출되면, 해당 페이지가 SPT에서 제거되고, 페이지가 점유한 프레임이 해제되어야 함.
+	struct supplemental_page_table *spt = &thread_current()->spt;
+	
 	// 1. 일단 addr 기반으로 SPT에서 페이지를 찾음.
-	spt_find_page(thread_current()->spt, addr);
-	// 2. VM_FILE인지 check
-	if (FILE != VM_FILE)
-		return false;
-	// 3. memory에 올라와 있는지 check
-	if (pa != kva)
-		return false;
-	// 4. pml4 매핑 제거함
-	pml4_clear_page();
-	// 5. SPT에서 제거함.
-	spt_remove_page();
-	// 6. page, frame, aux free 해줌.
-	free(page);
-	free(frame);
-	free(aux);
-	// 7. mmap용 파일 close
-	close(file);
-	// 8. process_exit ()
-	process_exit();
+	struct page *page = spt_find_page(spt, addr);
+	if (page == NULL) {
+		return; // 페이지가 없으면 munmap할 필요가 없당
+	}
+	// 2. VM_FILE인지 check. 근데 lazy한 상태라면 아직 VM_UNINIT 일 수 있음. 이에 타입 확인해야 함.
+	if (page_get_type (page) != VM_FILE) {
+		return;
+	}
+	
+	while (page != NULL && page_get_type (page) == VM_FILE) {
+		void *next_va = page->va + PGSIZE;
+		
+		// 3. memory에 올라와 있는지 check. page->frame이 NULL이면 아직 lazy 상태라 실제 frame은 없는 상태다.
+		if (page->frame != NULL) {
+			struct frame *frame = page->frame;
+			
+			// 4. dirty한 페이지면 파일에 refresh 해줘야 함.
+			file_backed_swap_out (page);
+
+			// 5. pml4 매핑 제거함
+			pml4_clear_page(thread_current ()->pml4, page->va);
+
+			// 6. frame table 에서 제거함. 실제 물리페이지 해제.,
+			list_remove (&frame->elem);
+			palloc_free_page (frame->kva);
+
+			frame->page = NULL;
+			page->frame = NULL;
+
+			free(frame);
+		}
+		// 7. SPT에서 제거함.
+		spt_remove_page(spt, page);
+		// 8. 여러 페이지가 있으니깐.. 다음 mmap page로,,,
+		page = spt_find_page (spt, next_va);
+	}
 }
