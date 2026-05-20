@@ -20,6 +20,9 @@ static const struct page_operations file_ops = {
 	.type = VM_FILE,
 };
 
+static struct bitmap *swap_bit;
+static struct lock swap_lock;
+
 /* 파일 VM 초기화 함수입니다. */
 void
 vm_file_init (void) {
@@ -68,7 +71,13 @@ file_backed_swap_out (struct page *page) {
 /* 파일 기반 페이지를 파괴합니다. PAGE는 호출자가 해제합니다. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	if (file_page->swapped) {
+		lock_acquire(&swap_lock);
+		// bitmap_reset(swap_bit, file_page->index);
+		file_page->swapped = false;
+		lock_release(&swap_lock);
+	}
 }
 
 static bool
