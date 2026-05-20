@@ -498,6 +498,18 @@ syscall_handler (struct intr_frame *f) {
 				f->R.rax = -1;
 				break;
 		}
+		case SYS_MUNMAP:
+		{
+			void *addr = f->R.rdi;
+
+			if (!is_user_vaddr (addr)) 
+				break;
+			
+			addr = pg_round_down (addr);
+
+			do_munmap (addr);
+			break;
+		}
 		default:
 			sys_exit (-1);
 			break;
