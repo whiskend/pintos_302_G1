@@ -1,10 +1,15 @@
 /* file.c: 메모리 기반 파일 객체(mmap된 객체)의 구현. */
 
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "vm/vm.h"
+#include "threads/mmu.h"
+#include "userprog/process.h"
 #include "vm/file.h"
 #include "threads/mmu.h"
 #include "threads/thread.h"
+#include "filesys/filesys.h"
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -17,6 +22,9 @@ static const struct page_operations file_ops = {
 	.destroy = file_backed_destroy,
 	.type = VM_FILE,
 };
+
+static struct bitmap *swap_bit;
+static struct lock swap_lock;
 
 /* 파일 VM 초기화 함수입니다. */
 void
@@ -37,8 +45,11 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 /* 파일에서 내용을 읽어 페이지를 스왑 인합니다. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	if(file_read_at (page->aux->file, page->frame->kva, page->aux->read_bytes, page->aux->offset)
-	 != (int)page->aux->read_bytes) {
+	lock_acquire (&filesys_lock);
+	off_t read_at = file_read_at (page->aux->file, page->frame->kva, page->aux->read_bytes, page->aux->offset);
+	lock_release (&filesys_lock);
+	
+	if(read_at != (int)page->aux->read_bytes) {
 		return false;
 	}
 	memset ((uint8_t *) page->frame->kva + page->aux->read_bytes, 0,
@@ -56,8 +67,12 @@ file_backed_swap_out (struct page *page) {
 		return true;
 	}
 
-	if (file_write_at(page->aux->file, page->frame->kva,
-		page->aux->read_bytes, page->aux->offset) != (int) page->aux->read_bytes)
+	lock_acquire (&filesys_lock);
+	off_t write_at = file_write_at (page->aux->file, page->frame->kva,
+		page->aux->read_bytes, page->aux->offset);
+	lock_release (&filesys_lock);
+	
+	if (write_at != (int) page->aux->read_bytes)
 		return false;
 
 	return true;
@@ -66,7 +81,13 @@ file_backed_swap_out (struct page *page) {
 /* 파일 기반 페이지를 파괴합니다. PAGE는 호출자가 해제합니다. */
 static void
 file_backed_destroy (struct page *page) {
-	struct file_page *file_page UNUSED = &page->file;
+	struct file_page *file_page = &page->file;
+	if (file_page->swapped) {
+		lock_acquire(&swap_lock);
+		// bitmap_reset(swap_bit, file_page->index);
+		file_page->swapped = false;
+		lock_release(&swap_lock);
+	}
 }
 
 static bool
@@ -76,13 +97,14 @@ lazy_load_segment (struct page *page, void *aux) {
 	if(page->frame->kva == NULL)
 		printf("kva NULL\n");
 	
-	if (file_read_at (lazy->file, page->frame->kva, lazy->read_bytes, lazy->offset) != (int) lazy->read_bytes) {
+	lock_acquire (&filesys_lock);
+	off_t read_at = file_read_at (lazy->file, page->frame->kva, lazy->read_bytes, lazy->offset);
+	lock_release (&filesys_lock);
+	if (read_at != (int) lazy->read_bytes) {
 		printf("file read 실패\n");
 		return false;
 	}
 	memset ((uint8_t *) page->frame->kva + lazy->read_bytes, 0, lazy->zero_bytes);
-
-	free(aux);
 
 	return true;
 }
@@ -98,21 +120,35 @@ do_mmap (void *addr, size_t length, int writable,
 	if (addr == NULL || file == NULL || length == 0)
 			return NULL;
 
+	lock_acquire (&filesys_lock);
 	file = file_reopen(file);
+	lock_release (&filesys_lock);
 
 	void *start = addr;
+
+	lock_acquire (&filesys_lock);
+	off_t file_len = file_length(file);
+	lock_release (&filesys_lock);
 	
-	uint32_t read_bytes = length;
+	if (file_len <= offset) {
+		lock_acquire (&filesys_lock);
+		file_close (file);
+		lock_release (&filesys_lock);
+		return NULL;
+	}
+	
+	uint32_t read_bytes = file_len - offset;
 	uint32_t zero_bytes = 0;
-	if (length % PGSIZE != 0) {
-		zero_bytes = PGSIZE - length % PGSIZE;
+	if (read_bytes % PGSIZE != 0) {
+		zero_bytes = PGSIZE - read_bytes % PGSIZE;
 	}
 	
 	if ((read_bytes + zero_bytes) % PGSIZE != 0 || pg_ofs (addr) != 0 || offset % PGSIZE != 0){
+		lock_acquire (&filesys_lock);
 		file_close(file);
+		lock_release (&filesys_lock);
 		return NULL;
 	}
-			
 
 	while (read_bytes > 0 || zero_bytes > 0) {
 		size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
@@ -140,4 +176,46 @@ do_mmap (void *addr, size_t length, int writable,
 /* munmap을 수행합니다. */
 void
 do_munmap (void *addr) {
+	// munmap은 >>페이지<< 를 해제하는 함수임. munmap이 호출되면, 해당 페이지가 SPT에서 제거되고, 페이지가 점유한 프레임이 해제되어야 함.
+	struct supplemental_page_table *spt = &thread_current()->spt;
+	
+	// 1. 일단 addr 기반으로 SPT에서 페이지를 찾음.
+	struct page *page = spt_find_page(spt, addr);
+	if (page == NULL) {
+		return; // 페이지가 없으면 munmap할 필요가 없당
+	}
+	// 2. VM_FILE인지 check. 근데 lazy한 상태라면 아직 VM_UNINIT 일 수 있음. 이에 타입 확인해야 함.
+	if (page_get_type (page) != VM_FILE) {
+		spt_remove_page(spt, page);
+		free(page->aux);
+		return;
+	}
+	
+	while (page != NULL && page_get_type (page) == VM_FILE) {
+		void *next_va = page->va + PGSIZE;
+		
+		// 3. memory에 올라와 있는지 check. page->frame이 NULL이면 아직 lazy 상태라 실제 frame은 없는 상태다.
+		if (page->frame != NULL) {
+			struct frame *frame = page->frame;
+			
+			// 4. dirty한 페이지면 파일에 refresh 해줘야 함.
+			file_backed_swap_out (page);
+
+			// 5. pml4 매핑 제거함
+			pml4_clear_page(thread_current ()->pml4, page->va);
+
+			// 6. frame table 에서 제거함. 실제 물리페이지 해제.,
+			list_remove (&frame->elem);
+			palloc_free_page (frame->kva);
+
+			frame->page = NULL;
+			page->frame = NULL;
+
+			free(frame);
+		}
+		// 7. SPT에서 제거함.
+		spt_remove_page(spt, page);
+		// 8. 여러 페이지가 있으니깐.. 다음 mmap page로,,,
+		page = spt_find_page (spt, next_va);
+	}
 }

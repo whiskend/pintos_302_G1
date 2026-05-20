@@ -20,6 +20,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "intrinsic.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -344,8 +345,11 @@ __do_fork (void *aux) {
 			thread_exit ();
 		}
 		new_fde->sfd->file = NULL;
-		if (is_file_fd (fde))
+		if (is_file_fd (fde)) {
+			lock_acquire (&filesys_lock);
 			new_fde->sfd->file = file_duplicate (fde->sfd->file);
+			lock_release (&filesys_lock);
+		}
 		new_fde->sfd->shared_count = 1;
 		new_fde->sfd->type = fde->sfd->type;
 		list_push_back (&current->fd_table, &new_fde->file_elem);
@@ -510,8 +514,11 @@ process_exit (void) {
 		entry->sfd->shared_count--;
 		if (entry->sfd->shared_count == 0)
 		{
-			if (is_file_fd (entry))
+			if (is_file_fd (entry)) {
+				lock_acquire (&filesys_lock);
 				file_close (entry->sfd->file);
+				lock_release (&filesys_lock);
+			}
 			free (entry->sfd);
 		}
 		free(entry);
@@ -659,8 +666,11 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
+	lock_acquire (&filesys_lock);
+	off_t bytes = file_read (file, &ehdr, sizeof ehdr);
+	lock_release (&filesys_lock);
 	/* 실행 파일 헤더를 읽고 검증합니다. */
-	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
+	if (bytes != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
 			|| ehdr.e_type != 2
 			|| ehdr.e_machine != 0x3E // amd64
@@ -676,11 +686,18 @@ load (const char *file_name, struct intr_frame *if_) {
 	for (i = 0; i < ehdr.e_phnum; i++) {
 		struct Phdr phdr;
 
-		if (file_ofs < 0 || file_ofs > file_length (file))
-			goto done;
-		file_seek (file, file_ofs);
+		lock_acquire (&filesys_lock);
+		off_t length = file_length (file);
+		lock_release (&filesys_lock);
 
-		if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
+		if (file_ofs < 0 || file_ofs > length)
+			goto done;
+		lock_acquire (&filesys_lock);
+		file_seek (file, file_ofs);
+		off_t bytes = file_read (file, &phdr, sizeof phdr);
+		lock_release (&filesys_lock);
+
+		if (bytes != sizeof phdr)
 			goto done;
 		file_ofs += sizeof phdr;
 		switch (phdr.p_type) {
@@ -736,13 +753,17 @@ load (const char *file_name, struct intr_frame *if_) {
 	success = true;
 #ifdef USERPROG
 	t->running_file = file;
+	lock_acquire (&filesys_lock);
 	file_deny_write(file);
+	lock_release (&filesys_lock);
 	file = NULL;	
 #endif
 done:
 
 	/* 로드 성공 여부와 관계없이 여기로 도착합니다. */
+	lock_acquire (&filesys_lock);
 	file_close (file);
+	lock_release (&filesys_lock);
 	return success;
 }
 
@@ -755,8 +776,12 @@ validate_segment (const struct Phdr *phdr, struct file *file) {
 	if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK))
 		return false;
 
+	lock_acquire (&filesys_lock);
+	off_t length = file_length (file);
+	lock_release (&filesys_lock);
+
 	/* p_offset은 FILE 안을 가리켜야 합니다. */
-	if (phdr->p_offset > (uint64_t) file_length (file))
+	if (phdr->p_offset > (uint64_t) length)
 		return false;
 
 	/* p_memsz는 최소한 p_filesz만큼 커야 합니다. */
