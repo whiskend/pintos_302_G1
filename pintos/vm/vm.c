@@ -251,20 +251,14 @@ vm_get_frame (void) {
 
 /* 스택을 확장합니다. */
 /* syscall.c에서 써야 해서 static 제거 */
-void
+bool
 vm_stack_growth (void *addr) {
 	// fault가 난 주소를 기점으로 페이지 경계로 내리기.
 	void *upage = pg_round_down(addr);
-	// 디버깅용
-	// printf ("vm_stack_growth: addr=%p upage=%p\n", addr, upage);
 
-	// bool ok = vm_alloc_page (VM_ANON, upage, true);
-	// printf ("vm_alloc_page stack result=%d\n", ok);
 	// 그리고 그 주소에다가 ANON 페이지 만들기.
-	vm_alloc_page (VM_ANON, upage, true);
-	// 만든 페이지를 바로 CLAIM하기.. 해줘야 하는데,
-	// vm_try_handle_fault()에서도 claim을 해주니깐.. 여기서 지움.
-	// vm_claim_page (upage);
+	// return 추가로 실패 여부 반환.
+	return vm_alloc_page (VM_ANON, upage, true);
 }
 
 /* 쓰기 보호된 페이지에서 발생한 폴트를 처리합니다. */
@@ -283,37 +277,28 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 	if (user) {
 		// 유저모드에서 fault 났을 때.
 		rsp = (void *) f->rsp;
-		/*디버깅용 코드*/
-		// printf("user mode fault, rsp: %p\n", rsp);
 	} else {
 		// 커널모드에서 fault 났을 때.
 		// syscall 처리 중에 유저 주소 건들면 fault가 날 수 잇음..
 		// 근데 f->rsp는 커널 스택 포인터라... stack growth(유저 스택 늘리기..라서..) 판단에 쓰면 안 된다.
 		// 그래서 syscall 진입할 때 user_rsp 저장해뒀다가 씀.
 		rsp = (void *) thread_current()->user_rsp;
-		/*디버깅용 코드*/
-		// printf ("fault addr=%p user=%d write=%d not_present=%d rsp=%p\n",
-        // addr, user, write, not_present, rsp);
 	}
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
 
 	if (addr == NULL) {
-		// printf ("addr is NULL\n");
 		goto fail;
 	}
 	if (is_kernel_vaddr(addr)) {
-		// printf ("addr is kernel vaddr\n");
 		goto fail;
 	}
 	if (!not_present) {
-		// printf ("page is present\n");
 		goto fail;
 	}		
 	page = spt_find_page(spt, addr);
-	// printf ("spt_find_page: %p\n", page);
 	if (page == NULL) {
-		// 다음 조건을 만족해야 stack_growth로 넘어감.
+		// 다음 조건을 만족해야 stack_growth로 넘어감. 
 		if (addr != NULL &&
 		// 1. addr가 user addr인지?
 		is_user_vaddr(addr) &&
@@ -324,19 +309,24 @@ vm_try_handle_fault (struct intr_frame *f, void *addr,
 		// 4. addr >= rsp - 8 정도인지?
 		addr >= rsp - 8 ) {
 		// 하나라도 만족 못하면 goto fail.
-			vm_stack_growth (addr);	
-			page = spt_find_page (&thread_current()->spt, addr);
+			// bool로 바꿨어서.. 잘 되는지 check
+			if (!vm_stack_growth (addr)) {
+				goto fail;
+			}
+			page = spt_find_page (spt, addr);
+			if (page == NULL) {
+				goto fail;
+			}
 		} else {
-			// printf("Stack growth conditions not met\n");
 			goto fail;
 		}
 	}
-	if (write && !page->writable) {
-		// printf ("write access to read-only page\n");
+
+	if (write && !page->writable)
 		goto fail;
-	}
 
 	return vm_do_claim_page (page);
+	
 	fail:
 		return false;
 }
@@ -445,7 +435,6 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 		hash_first(&i, src->hash_pages);
 		while (hash_next(&i)) {
 			page_s = hash_entry(hash_cur(&i), struct page, hash_elem);
-			// printf("복사 중인 페이지 va: %p\n", page_s->va);
 			if (page_s->operations->type == VM_UNINIT) {
 				// 부모 aux, 자식 aux 분리..
 				struct lazy_aux *src_aux = page_s->uninit.aux;
@@ -462,9 +451,8 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 						return false;
 					*dst_aux = *src_aux;
 				}
-				// 이거 좀 수정해야 할 거 ㅏㅌ아ㅏ여,, aux 부모랑 자식이 같은 aux 포인터 써여..
+
 				if(!vm_alloc_page_with_initializer(page_s->uninit.type, page_s->va, page_s->writable, page_s->uninit.init, dst_aux)) {
-					// printf("vm_alloc_page_with_initializer 실패\n");
 					free (dst_aux);
 					return false;
 				}
@@ -472,50 +460,37 @@ supplemental_page_table_copy (struct supplemental_page_table *dst,
 			else {
 				if(page_s->operations->type == VM_ANON) {
 					if(!vm_alloc_page(VM_ANON, page_s->va, page_s->writable)) {
-						// printf("vm_alloc_page 실패\n");
 						return false;
 					}
-					// 이거 어디에 써요?
-					// struct frame * frame_dst = vm_get_frame();
+					
 					if(!vm_claim_page(page_s->va)) {
-						// printf("vm_claim_page 실패\n");
 						return false;
 					}
 					struct page *page_dst;
-					// printf("VM_ANON page_s->va: %p\n", page_s->va);
 					page_dst = spt_find_page(dst, page_s->va);
-					// printf("복사된 페이지 va: %p\n", page_dst->va);
-					// 이거 부모가 lazy면 터질 수 있지 않나요..? frame 때매 null 뜰건데..
+
 					if (page_s->frame == NULL) {
-						// printf("page_s->frame is NULL\n");
 						return false;
 					} else {
 						memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
-						// printf ("복사된 페이지 내용: %s\n", (char *) page_dst->frame->kva);
 					}
 				}
+				
 				if(page_s->operations->type == VM_FILE) {
 					if(!vm_alloc_page(VM_FILE, page_s->va, page_s->writable)) {
-						// printf("vm_alloc_page 실패\n");
 						return false;
 					}
-					// struct frame * frame_dst = vm_get_frame();
+
 					if(!vm_claim_page(page_s->va)) {
-						// printf("vm_claim_page 실패\n");	
 						return false;
 					}
 					struct page *page_dst;
-					// printf ("VM_FILE page_s->va: %p\n", page_s->va);
-					page_dst = spt_find_page(dst, page_s->va);
-					// printf("복사된 페이지 va: %p\n", page_dst->va);
-					
+					page_dst = spt_find_page(dst, page_s->va);				
 					
 					if (page_s->frame == NULL) {
-						// printf("page_s->frame is NULL\n");
 						return false;
 					} else {
 						memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
-						// printf("복사된 페이지 내용: %s\n", (char *) page_dst->frame->kva);
 					}
 				}
 			}
