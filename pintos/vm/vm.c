@@ -152,9 +152,25 @@ spt_insert_page (struct supplemental_page_table *spt,
 
 void
 spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
-	//page내의 포인터들을 free 시켜줘야 함.
-	hash_delete(spt->hash_pages, &page->hash_elem);
-	free(page->frame);
+	struct frame *frame = page->frame;
+
+	hash_delete (spt->hash_pages, &page->hash_elem);
+
+	if (frame != NULL) {
+		if (frame->owner != NULL)
+			pml4_clear_page (frame->owner->pml4, page->va);
+
+		lock_acquire (&frame_table_lock);
+		list_remove (&frame->elem);
+		lock_release (&frame_table_lock);
+
+		palloc_free_page (frame->kva);
+		frame->page = NULL;
+		frame->owner = NULL;
+		page->frame = NULL;
+		free (frame);
+	}
+
 	vm_dealloc_page (page);
 }
 
@@ -498,6 +514,9 @@ spt_destroy_page (struct hash_elem *e, void *aux) {
 
 	if (page->frame != NULL) {
 		struct frame *frame = page->frame;
+
+		if (page_get_type (page) == VM_FILE)
+			swap_out (page);
 		
 		pml4_clear_page (thread_current()->pml4, page->va);
 

@@ -8,6 +8,7 @@
 #include "userprog/process.h"
 #include "vm/file.h"
 #include "threads/mmu.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "filesys/filesys.h"
 
@@ -88,11 +89,14 @@ file_backed_destroy (struct page *page) {
 		file_page->swapped = false;
 		lock_release(&swap_lock);
 	}
+	free (page->aux);
+	page->aux = NULL;
 }
 
 static bool
 lazy_load_segment (struct page *page, void *aux) {
 	struct lazy_aux *lazy = (struct lazy_aux *) aux;
+	page->aux = lazy;
 	
 	if(page->frame->kva == NULL)
 		printf("kva NULL\n");
@@ -187,7 +191,6 @@ do_munmap (void *addr) {
 	// 2. VM_FILE인지 check. 근데 lazy한 상태라면 아직 VM_UNINIT 일 수 있음. 이에 타입 확인해야 함.
 	if (page_get_type (page) != VM_FILE) {
 		spt_remove_page(spt, page);
-		free(page->aux);
 		return;
 	}
 	
@@ -196,22 +199,8 @@ do_munmap (void *addr) {
 		
 		// 3. memory에 올라와 있는지 check. page->frame이 NULL이면 아직 lazy 상태라 실제 frame은 없는 상태다.
 		if (page->frame != NULL) {
-			struct frame *frame = page->frame;
-			
 			// 4. dirty한 페이지면 파일에 refresh 해줘야 함.
 			file_backed_swap_out (page);
-
-			// 5. pml4 매핑 제거함
-			pml4_clear_page(thread_current ()->pml4, page->va);
-
-			// 6. frame table 에서 제거함. 실제 물리페이지 해제.,
-			list_remove (&frame->elem);
-			palloc_free_page (frame->kva);
-
-			frame->page = NULL;
-			page->frame = NULL;
-
-			free(frame);
 		}
 		// 7. SPT에서 제거함.
 		spt_remove_page(spt, page);
