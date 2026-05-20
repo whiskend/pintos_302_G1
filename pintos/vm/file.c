@@ -112,8 +112,8 @@ do_mmap (void *addr, size_t length, int writable,
 	void *start = addr;
 	uint32_t read_bytes = file_length(file) - offset;
 	uint32_t zero_bytes = 0;
-	if (length % PGSIZE != 0) {
-		zero_bytes = PGSIZE - length % PGSIZE;
+	if (read_bytes % PGSIZE != 0) {
+		zero_bytes = PGSIZE - read_bytes % PGSIZE;
 	}
 	
 	if ((read_bytes + zero_bytes) % PGSIZE != 0 || pg_ofs (addr) != 0 || offset % PGSIZE != 0){
