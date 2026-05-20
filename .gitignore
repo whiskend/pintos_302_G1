@@ -218,6 +218,9 @@ Temporary Items
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
+
+### Personal docs ###
+docs/이경근/
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/*.code-snippets

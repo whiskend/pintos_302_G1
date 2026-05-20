@@ -168,7 +168,7 @@ struct fork_info {
 /* 현재 프로세스를 `name`으로 복제합니다. 새 프로세스의 thread id를 반환하며,
  * 스레드를 만들 수 없으면 TID_ERROR를 반환합니다. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+process_fork (const char *name, struct intr_frame *if_) {
 	/* 현재 스레드를 새 스레드로 복제합니다. */
 	struct fork_info *fi = malloc (sizeof (struct fork_info));
 	if (fi == NULL) {
@@ -395,6 +395,7 @@ process_exec (void *f_name) {
 
 	/* 먼저 현재 컨텍스트를 정리합니다. */
 	process_cleanup ();
+	supplemental_page_table_init (&thread_current ()->spt);
 
 	/* 그 다음 실행 파일을 로드합니다. */
 	success = load (arg, &_if);
@@ -893,7 +894,7 @@ static bool
 lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: 파일에서 세그먼트를 로드합니다. */
 	struct lazy_aux *lazy = (struct lazy_aux *) aux;
-	
+	page->aux = lazy;
 	if(page->frame->kva == NULL)
 		printf("kva NULL\n");
 	
@@ -904,7 +905,6 @@ lazy_load_segment (struct page *page, void *aux) {
 	}
 	memset ((uint8_t *) page->frame->kva + lazy->read_bytes, 0, lazy->zero_bytes);
 
-	free(aux);
 	return true;
 	
 	/* TODO: 이 함수는 주소 VA에서 첫 page fault가 발생했을 때 호출됩니다. */

@@ -27,6 +27,10 @@ rollback -> 실패 시 원상복구
 #include "vm/inspect.h"
 #include "kernel/hash.h"
 #include "threads/vaddr.h"
+#include "kernel/hash.h"
+#include "userprog/process.h"
+#include "lib/string.h"
+#include "vm/uninit.h"
 
 struct lock frame_table_lock;
 struct list frame_table;
@@ -89,31 +93,19 @@ vm_alloc_page_with_initializer (enum vm_type type, void *upage, bool writable,
 			initializer = file_backed_initializer;
 		}
 
-		// 수정.. page -> *page
-		// why? struct page 하나를 넣어야 함. 그런데 포인터 크기 만큼만 잡고 있어요.
-		// 까딱하면 여기서 부터 터질 듯...
 		struct page *page = malloc(sizeof (struct page));
 		if(page == NULL) {
-			return false;
 			printf("page malloc 실패\n");
+			return false;
 		}
 
-		// if(aux != NULL) {
-		// 	page->aux = *(struct lazy_aux *) aux;
-		// }
-		
-		// 추가..
-		// why? 읽기 전용인지, 쓰기가 가능한지 나중에 fault 처리할 때 봐야하는데, 나중에 보면 모를 거 같아서 일단 넣어둡니다.
 		uninit_new(page, upage, init, type, aux, initializer);
 		page->writable = writable;
-		/* TODO: 페이지를 spt에 삽입합니다. */
-		// 수정 *spt -> spt
-		// why? 페이지 목록의 주소를 넘겨야 하는데, 그 주소의 주소를 넘김. 잘못 넘긴 꼴..
+		
 		if(spt_insert_page(spt, page)) {
 			return true;
 		}
 		else {
-
 			printf("spt_insert_page 실패\n");
 		}
 	}
@@ -146,7 +138,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 	/* TODO: 이 함수를 채웁니다. */
 	//해당 가상 주소가 주어진 보조 페이지 테이블에 존재하지 않는지 확인해야함.
 	//hash_insert를 참고해보자.
-	//page의 hash_elem과 spt의 hash_elem 비교.
+	//page의 hash_elem과 spt의 hash_elem 비교. -> 이거 맞나요?
 	if(hash_insert(spt->hash_pages, &page->hash_elem) == NULL) {
 		success = true;
 	}
@@ -154,7 +146,7 @@ spt_insert_page (struct supplemental_page_table *spt,
 		success = false;
 		printf("hash_insert 실패\n");
 	}
-	//hash_entry()
+	//hash_entry() -> 이건 안쓰는거죠?
 	return success;
 }
 
@@ -165,26 +157,60 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	free(page->frame);
 	//이건 원래 있던 거.
 	vm_dealloc_page (page);
-	return true;
 }
 
 /* 축출할 struct frame을 가져옵니다. */
 static struct frame *
 vm_get_victim (void) {
-	struct frame *victim = NULL;
 	 /* TODO: 축출 정책은 직접 정합니다. */
+	for (struct list_elem *e = list_begin (&frame_table);
+	e != list_end (&frame_table); e = list_next (e)) {
+		struct frame *temp = list_entry(e, struct frame, elem);
+		if (temp->page == NULL || temp->owner == NULL)
+			continue;
+		if (pml4_is_accessed(temp->owner->pml4, temp->page->va)) {
+			pml4_set_accessed(temp->owner->pml4, temp->page->va, false);
+		}
+		else {
+			return temp;
+		}
+	}
 
-	return victim;
+	for (struct list_elem *e = list_begin (&frame_table);
+	e != list_end (&frame_table); e = list_next (e)) {
+		struct frame *temp = list_entry(e, struct frame, elem);
+		if (temp->page != NULL && temp->owner != NULL)
+			return temp;
+	}
+	return NULL;
 }
 
 /* 페이지 하나를 축출하고 해당 프레임을 반환합니다.
  * 오류 시 NULL을 반환합니다. */
 static struct frame *
 vm_evict_frame (void) {
-	struct frame *victim UNUSED = vm_get_victim ();
-	/* TODO: victim을 스왑 아웃하고 축출된 프레임을 반환합니다. */
+	lock_acquire(&frame_table_lock);
+	struct frame *victim = vm_get_victim ();
+	ASSERT(victim != NULL);
+	list_remove(&victim->elem);
+	lock_release(&frame_table_lock);
 
-	return NULL;
+	/* TODO: victim을 스왑 아웃하고 축출된 프레임을 반환합니다. */
+	if (!swap_out(victim->page)) {
+		lock_acquire(&frame_table_lock);
+		list_push_back(&frame_table, &victim->elem);
+		lock_release(&frame_table_lock);
+		return NULL;
+	}
+
+	// pml4 페이지 클리어
+	pml4_clear_page(victim->owner->pml4, victim->page->va);
+	victim->page->frame = NULL;
+	victim->page = NULL;
+	victim->owner = NULL;
+
+	// 프레임 
+	return victim;
 }
 
 /* palloc()을 호출해 프레임을 가져옵니다. 사용 가능한 페이지가 없으면 페이지를
@@ -197,29 +223,49 @@ vm_get_frame (void) {
 	
 	void *kva = palloc_get_page(PAL_USER);
 	if (kva == NULL) {
-		return NULL;
+		frame = vm_evict_frame();
+	}
+	else {
+		frame = malloc (sizeof *frame);
+	
+		if (frame == NULL) {
+			palloc_free_page(kva);
+			return NULL;
+		}
+		frame->kva = kva;
+		frame->page = NULL;
+		frame->owner = NULL;
 	}
 
-	frame = malloc (sizeof *frame);
-	
-	if (frame == NULL) {
-		palloc_free_page(kva);
+	if (frame == NULL)
 		return NULL;
-	}
-	frame->kva = kva;
-	frame->page = NULL;
+
+	ASSERT (frame != NULL);
+	ASSERT (frame->page == NULL);
+
 	lock_acquire(&frame_table_lock);
 	list_push_back(&frame_table, &frame->elem);
 	lock_release(&frame_table_lock);
 
-	ASSERT (frame != NULL);
-	ASSERT (frame->page == NULL);
 	return frame;
 }
 
 /* 스택을 확장합니다. */
-static void
-vm_stack_growth (void *addr UNUSED) {
+/* syscall.c에서 써야 해서 static 제거 */
+void
+vm_stack_growth (void *addr) {
+	// fault가 난 주소를 기점으로 페이지 경계로 내리기.
+	void *upage = pg_round_down(addr);
+	// 디버깅용
+	// printf ("vm_stack_growth: addr=%p upage=%p\n", addr, upage);
+
+	// bool ok = vm_alloc_page (VM_ANON, upage, true);
+	// printf ("vm_alloc_page stack result=%d\n", ok);
+	// 그리고 그 주소에다가 ANON 페이지 만들기.
+	vm_alloc_page (VM_ANON, upage, true);
+	// 만든 페이지를 바로 CLAIM하기.. 해줘야 하는데,
+	// vm_try_handle_fault()에서도 claim을 해주니깐.. 여기서 지움.
+	// vm_claim_page (upage);
 }
 
 /* 쓰기 보호된 페이지에서 발생한 폴트를 처리합니다. */
@@ -229,25 +275,67 @@ vm_handle_wp (struct page *page UNUSED) {
 
 /* 성공 시 true를 반환합니다. */
 bool
-vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
-		bool user UNUSED, bool write , bool not_present UNUSED) {
-	struct supplemental_page_table *spt UNUSED = &thread_current ()->spt;
+vm_try_handle_fault (struct intr_frame *f, void *addr,
+		bool user, bool write , bool not_present) {
+	struct supplemental_page_table *spt = &thread_current ()->spt;
 	struct page *page = NULL;
+	void *rsp;
+
+	if (user) {
+		// 유저모드에서 fault 났을 때.
+		rsp = (void *) f->rsp;
+		/*디버깅용 코드*/
+		// printf("user mode fault, rsp: %p\n", rsp);
+	} else {
+		// 커널모드에서 fault 났을 때.
+		// syscall 처리 중에 유저 주소 건들면 fault가 날 수 잇음..
+		// 근데 f->rsp는 커널 스택 포인터라... stack growth(유저 스택 늘리기..라서..) 판단에 쓰면 안 된다.
+		// 그래서 syscall 진입할 때 user_rsp 저장해뒀다가 씀.
+		rsp = (void *) thread_current()->user_rsp;
+		/*디버깅용 코드*/
+		// printf ("fault addr=%p user=%d write=%d not_present=%d rsp=%p\n",
+        // addr, user, write, not_present, rsp);
+	}
 	/* TODO: 폴트를 검증합니다. */
 	/* TODO: 여기에 코드를 작성합니다. */
 
-	
-	if (addr == NULL)
+	if (addr == NULL) {
+		// printf ("addr is NULL\n");
 		goto fail;
-	if (is_kernel_vaddr(addr))
+	}
+	if (is_kernel_vaddr(addr)) {
+		// printf ("addr is kernel vaddr\n");
 		goto fail;
-	if(!not_present)
+	}
+	if (!not_present) {
+		// printf ("page is present\n");
 		goto fail;
+	}		
 	page = spt_find_page(spt, addr);
-	if(page == NULL)
+	// printf ("spt_find_page: %p\n", page);
+	if (page == NULL) {
+		// 다음 조건을 만족해야 stack_growth로 넘어감.
+		if (addr != NULL &&
+		// 1. addr가 user addr인지?
+		is_user_vaddr(addr) &&
+		// 2. addr가 USER_STACK 아래인지?
+		addr < USER_STACK &&
+		// 3. 너무 많이 자라지는 않았는지?
+		addr >= USER_STACK - STACK_MAX &&
+		// 4. addr >= rsp - 8 정도인지?
+		addr >= rsp - 8 ) {
+		// 하나라도 만족 못하면 goto fail.
+			vm_stack_growth (addr);	
+			page = spt_find_page (&thread_current()->spt, addr);
+		} else {
+			// printf("Stack growth conditions not met\n");
+			goto fail;
+		}
+	}
+	if (write && !page->writable) {
+		// printf ("write access to read-only page\n");
 		goto fail;
-	if(write && !page->writable)
-		goto fail;
+	}
 
 	return vm_do_claim_page (page);
 	fail:
@@ -256,6 +344,7 @@ vm_try_handle_fault (struct intr_frame *f UNUSED, void *addr UNUSED,
 
 static void rollback_frame (struct page *page, struct frame *frame) {
 	frame->page = NULL;
+	frame->owner = NULL;
 	page->frame = NULL;
 
 	lock_acquire(&frame_table_lock);
@@ -277,7 +366,7 @@ vm_dealloc_page (struct page *page) {
 
 /* VA에 할당된 페이지를 claim합니다. */
 bool
-vm_claim_page (void *va UNUSED) {
+vm_claim_page (void *va) {
 	struct page *page = NULL;
 	/* TODO: 이 함수를 채웁니다. */
 	page = spt_find_page(&thread_current()->spt, va);
@@ -299,6 +388,7 @@ vm_do_claim_page (struct page *page) {
 
 	/* 링크를 설정합니다. */
 	frame->page = page;
+	frame->owner = thread_current();
 	page->frame = frame;
 
 	/* TODO: 페이지의 VA를 프레임의 PA에 매핑하는 페이지 테이블 엔트리를 삽입합니다. */
@@ -316,7 +406,6 @@ vm_do_claim_page (struct page *page) {
 		return false;
 	}
 }
-
 
 static bool hash_va_less(const struct hash_elem *a,
 		const struct hash_elem *b,
@@ -344,13 +433,125 @@ supplemental_page_table_init (struct supplemental_page_table *spt) {
 
 /* 보조 페이지 테이블을 src에서 dst로 복사합니다. */
 bool
-supplemental_page_table_copy (struct supplemental_page_table *dst UNUSED,
-		struct supplemental_page_table *src UNUSED) {
+supplemental_page_table_copy (struct supplemental_page_table *dst,
+		struct supplemental_page_table *src) {
+		//dst의 spt
+		//src의 보조 페이지 테이블에 있는 각 페이지를 순회하여 dst의 보조 페이지 테이블에 엔트리를 정확히 복사. uninit 페이지를 할당하고 즉시 클레임 해야 한다.
+		//dst에 복사된 페이지들을 frame에다 새로 할당 해준다
+		//lazy_load 고려해야한다
+		//spt내에 있는 pml4 즉, src 내에 있는 pml4와 dst내에 있는 Pml4는 각각 독립적이다.
+		//struct hash_elem *s = src->hash_elem; -> 이건 필요없어 보여서 일단 주석처리함.
+		struct page *page_s; //src에서 순회한 뒤 hash_entry로 해서 꺼낸 page
+		struct hash_iterator i;
+		hash_first(&i, src->hash_pages);
+		while (hash_next(&i)) {
+			page_s = hash_entry(hash_cur(&i), struct page, hash_elem);
+			// printf("복사 중인 페이지 va: %p\n", page_s->va);
+			if (page_s->operations->type == VM_UNINIT) {
+				// 부모 aux, 자식 aux 분리..
+				struct lazy_aux *src_aux = page_s->uninit.aux;
+				struct lazy_aux *dst_aux = NULL;
+
+				// 만약 부모 페이지가 lazy 페이지라면, 자식 페이지도 lazy 페이지로 만들어야 하므로, 부모의 aux 정보를 자식의 aux 정보로 복사해야 함.
+				// 부모의 aux가 null이 아닐 때에만 복사할 수 있겠지?
+				if (src_aux != NULL) {
+					// 부모의 aux 정보를 자식의 aux 정보로 복사.
+					// 자식 aux 사이즈 할당..
+					dst_aux = malloc(sizeof *dst_aux);
+					// 부모 aux 정보 복사.
+					if (dst_aux == NULL)
+						return false;
+					*dst_aux = *src_aux;
+				}
+				// 이거 좀 수정해야 할 거 ㅏㅌ아ㅏ여,, aux 부모랑 자식이 같은 aux 포인터 써여..
+				if(!vm_alloc_page_with_initializer(page_s->uninit.type, page_s->va, page_s->writable, page_s->uninit.init, dst_aux)) {
+					// printf("vm_alloc_page_with_initializer 실패\n");
+					free (dst_aux);
+					return false;
+				}
+			}
+			else {
+				if(page_s->operations->type == VM_ANON) {
+					if(!vm_alloc_page(VM_ANON, page_s->va, page_s->writable)) {
+						// printf("vm_alloc_page 실패\n");
+						return false;
+					}
+					// 이거 어디에 써요?
+					// struct frame * frame_dst = vm_get_frame();
+					if(!vm_claim_page(page_s->va)) {
+						// printf("vm_claim_page 실패\n");
+						return false;
+					}
+					struct page *page_dst;
+					// printf("VM_ANON page_s->va: %p\n", page_s->va);
+					page_dst = spt_find_page(dst, page_s->va);
+					// printf("복사된 페이지 va: %p\n", page_dst->va);
+					// 이거 부모가 lazy면 터질 수 있지 않나요..? frame 때매 null 뜰건데..
+					if (page_s->frame == NULL) {
+						// printf("page_s->frame is NULL\n");
+						return false;
+					} else {
+						memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
+						// printf ("복사된 페이지 내용: %s\n", (char *) page_dst->frame->kva);
+					}
+				}
+				if(page_s->operations->type == VM_FILE) {
+					if(!vm_alloc_page(VM_FILE, page_s->va, page_s->writable)) {
+						// printf("vm_alloc_page 실패\n");
+						return false;
+					}
+					// struct frame * frame_dst = vm_get_frame();
+					if(!vm_claim_page(page_s->va)) {
+						// printf("vm_claim_page 실패\n");	
+						return false;
+					}
+					struct page *page_dst;
+					// printf ("VM_FILE page_s->va: %p\n", page_s->va);
+					page_dst = spt_find_page(dst, page_s->va);
+					// printf("복사된 페이지 va: %p\n", page_dst->va);
+					
+					
+					if (page_s->frame == NULL) {
+						// printf("page_s->frame is NULL\n");
+						return false;
+					} else {
+						memcpy(page_dst->frame->kva, page_s->frame->kva, PGSIZE);
+						// printf("복사된 페이지 내용: %s\n", (char *) page_dst->frame->kva);
+					}
+				}
+			}
+		};
+		return true;
+}
+
+static void
+spt_destroy_page (struct hash_elem *e, void *aux) {
+	struct page *page = hash_entry (e, struct page, hash_elem);
+
+	if (page->frame != NULL) {
+		struct frame *frame = page->frame;
+		
+		pml4_clear_page (thread_current()->pml4, page->va);
+
+		lock_acquire (&frame_table_lock);
+		list_remove (&frame->elem);
+		lock_release (&frame_table_lock);
+
+		palloc_free_page (frame->kva);
+
+		frame->page = NULL;
+		page->frame = NULL;
+
+		free (frame);
+		}
+	vm_dealloc_page (page);
 }
 
 /* 보조 페이지 테이블이 보유한 자원을 해제합니다. */
 void
-supplemental_page_table_kill (struct supplemental_page_table *spt UNUSED) {
+supplemental_page_table_kill (struct supplemental_page_table *spt) {
 	/* TODO: 스레드가 보유한 모든 supplemental_page_table을 파괴하고,
 	 * TODO: 수정된 모든 내용을 저장소에 다시 씁니다. */
+	hash_destroy (spt->hash_pages, spt_destroy_page);
+	free (spt->hash_pages);
 }
