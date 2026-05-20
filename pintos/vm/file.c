@@ -113,7 +113,7 @@ do_mmap (void *addr, size_t length, int writable,
 
 	void *start = addr;
 	
-	uint32_t read_bytes = length;
+	uint32_t read_bytes = length - (size_t)offset;
 	uint32_t zero_bytes = 0;
 	if (length % PGSIZE != 0) {
 		zero_bytes = PGSIZE - length % PGSIZE;
