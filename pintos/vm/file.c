@@ -1,12 +1,15 @@
 /* file.c: 메모리 기반 파일 객체(mmap된 객체)의 구현. */
 
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "vm/vm.h"
 #include "threads/mmu.h"
 #include "userprog/process.h"
 #include "vm/file.h"
 #include "threads/mmu.h"
 #include "threads/thread.h"
+#include "filesys/filesys.h"
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -42,8 +45,11 @@ file_backed_initializer (struct page *page, enum vm_type type, void *kva) {
 /* 파일에서 내용을 읽어 페이지를 스왑 인합니다. */
 static bool
 file_backed_swap_in (struct page *page, void *kva) {
-	if(file_read_at (page->aux->file, page->frame->kva, page->aux->read_bytes, page->aux->offset)
-	 != (int)page->aux->read_bytes) {
+	lock_acquire (&filesys_lock);
+	off_t read_at = file_read_at (page->aux->file, page->frame->kva, page->aux->read_bytes, page->aux->offset);
+	lock_release (&filesys_lock);
+	
+	if(read_at != (int)page->aux->read_bytes) {
 		return false;
 	}
 	memset ((uint8_t *) page->frame->kva + page->aux->read_bytes, 0,
@@ -61,8 +67,12 @@ file_backed_swap_out (struct page *page) {
 		return true;
 	}
 
-	if (file_write_at(page->aux->file, page->frame->kva,
-		page->aux->read_bytes, page->aux->offset) != (int) page->aux->read_bytes)
+	lock_acquire (&filesys_lock);
+	off_t write_at = file_write_at (page->aux->file, page->frame->kva,
+		page->aux->read_bytes, page->aux->offset);
+	lock_release (&filesys_lock);
+	
+	if (write_at != (int) page->aux->read_bytes)
 		return false;
 
 	return true;
@@ -87,7 +97,10 @@ lazy_load_segment (struct page *page, void *aux) {
 	if(page->frame->kva == NULL)
 		printf("kva NULL\n");
 	
-	if (file_read_at (lazy->file, page->frame->kva, lazy->read_bytes, lazy->offset) != (int) lazy->read_bytes) {
+	lock_acquire (&filesys_lock);
+	off_t read_at = file_read_at (lazy->file, page->frame->kva, lazy->read_bytes, lazy->offset);
+	lock_release (&filesys_lock);
+	if (read_at != (int) lazy->read_bytes) {
 		printf("file read 실패\n");
 		return false;
 	}
@@ -107,17 +120,33 @@ do_mmap (void *addr, size_t length, int writable,
 	if (addr == NULL || file == NULL || length == 0)
 			return NULL;
 
+	lock_acquire (&filesys_lock);
 	file = file_reopen(file);
+	lock_release (&filesys_lock);
 
 	void *start = addr;
-	uint32_t read_bytes = file_length(file) - offset;
+
+	lock_acquire (&filesys_lock);
+	off_t file_len = file_length(file);
+	lock_release (&filesys_lock);
+	
+	if (file_len <= offset) {
+		lock_acquire (&filesys_lock);
+		file_close (file);
+		lock_release (&filesys_lock);
+		return NULL;
+	}
+	
+	uint32_t read_bytes = file_len - offset;
 	uint32_t zero_bytes = 0;
 	if (read_bytes % PGSIZE != 0) {
 		zero_bytes = PGSIZE - read_bytes % PGSIZE;
 	}
 	
 	if ((read_bytes + zero_bytes) % PGSIZE != 0 || pg_ofs (addr) != 0 || offset % PGSIZE != 0){
+		lock_acquire (&filesys_lock);
 		file_close(file);
+		lock_release (&filesys_lock);
 		return NULL;
 	}
 

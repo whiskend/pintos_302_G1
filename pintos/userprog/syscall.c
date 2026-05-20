@@ -288,7 +288,9 @@ syscall_handler (struct intr_frame *f) {
 				break;
 			}
 
+			lock_acquire (&filesys_lock);
 			f->R.rax = file_length(entry->sfd->file);
+			lock_release (&filesys_lock);
 			break;
 		}
 		case SYS_READ:
@@ -303,16 +305,12 @@ syscall_handler (struct intr_frame *f) {
 
 			if (size == 0) {
 				f->R.rax = 0;
-				// 디버깅용
-				// printf("read 0 bytes from fd %d\n", fd);
 				break;
 			}
 
 			struct fd_entry *fd_entry = find_fd_entry (fd);
 			if (fd_entry == NULL) {
 				f->R.rax = -1;
-				// 디버깅용
-				// printf("fd_entry is NULL\n");
 				break;
 			}
 
@@ -320,21 +318,17 @@ syscall_handler (struct intr_frame *f) {
 				for (int i = 0; i < size; i++)
 					buf[i] = input_getc ();
 				f->R.rax = size;
-				// 디버깅용
-				// printf("read %d bytes from fd %d\n", (int) f->R.rax, fd);
 				break;
 			}
 
 			if (fd_entry->sfd->type == STDOUT_FILENO) {
 				f->R.rax = -1;
-				// 디버깅용
-				// printf("attempted to read from stdout\n");
 				break;
 			}
 
+			lock_acquire (&filesys_lock);
 			f->R.rax = file_read (fd_entry->sfd->file, buf, size);
-			// 디버깅용	
-			// printf("read %d bytes from fd %d\n", (int) f->R.rax, fd);
+			lock_release (&filesys_lock);
 			break;
 		}
 		case SYS_WRITE:
@@ -350,22 +344,18 @@ syscall_handler (struct intr_frame *f) {
 			struct fd_entry *entry = find_fd_entry (fd);
 			if (entry == NULL) {
 				f->R.rax = -1;
-				// 디버깅용
-				// printf("fd_entry is NULL\n");
 				break;
 			}
 			if (entry->sfd->type == STDOUT_FILENO) {
 				putbuf (buf, size);
 				f->R.rax = size;
-				// 디버깅용
-				// printf("write %d bytes to fd %d\n", (int) f->R.rax, fd);
 				break;
 			}
 			if (entry->sfd->type == FILE_TYPE)
 			{
+				lock_acquire (&filesys_lock);	
 				f->R.rax = file_write(entry->sfd->file, buf, size);
-				// 디버깅용
-				// printf("write %d bytes to fd %d\n", (int) f->R.rax, fd);
+				lock_release (&filesys_lock);
 			}
 			break;
 		}
@@ -382,7 +372,9 @@ syscall_handler (struct intr_frame *f) {
 			}
 			if (fd_entry->sfd->type == FILE_TYPE)
 			{
+				lock_acquire (&filesys_lock);
 				file_seek (fd_entry->sfd->file, pos);
+				lock_release (&filesys_lock);
 			}
 			break;
 		}
@@ -396,7 +388,9 @@ syscall_handler (struct intr_frame *f) {
 			}
 			if (fd_entry->sfd->type == FILE_TYPE)
 			{
+				lock_acquire (&filesys_lock);
 				f->R.rax = file_tell (fd_entry->sfd->file);
+				lock_release (&filesys_lock);
 			}
 			break;
 		}
@@ -412,8 +406,11 @@ syscall_handler (struct intr_frame *f) {
 			fd_entry->sfd->shared_count--;
 			if (fd_entry->sfd->shared_count == 0)
 			{
-				if (fd_entry->sfd->type == FILE_TYPE)
+				if (fd_entry->sfd->type == FILE_TYPE) {
+					lock_acquire (&filesys_lock);
 					file_close (fd_entry->sfd->file);
+					lock_release (&filesys_lock);
+				}
 				free (fd_entry->sfd);
 			}
 			free (fd_entry);
