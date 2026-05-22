@@ -1,5 +1,6 @@
 /* anon.c: 디스크 이미지가 없는 페이지(익명 페이지)의 구현. */
 
+#include <string.h>
 #include "vm/vm.h"
 #include "devices/disk.h"
 #include "threads/vaddr.h"
@@ -59,10 +60,15 @@ anon_swap_in (struct page *page, void *kva) {
 		return false;
 	struct anon_page *anon_page = &page->anon;
 
-	// 쫓겨났던 데이터가 다시 필요해지면, 기록해 둔 슬롯 번호를 보고 스왑 디스크에서 메모리로 데이터를 읽어온다.
-	if(anon_page == NULL || !anon_page->swapped)
+	if (anon_page == NULL)
 		return false;
 
+	if (!anon_page->swapped) {
+		memset (kva, 0, PGSIZE);
+		return true;
+	}
+
+	// 쫓겨났던 데이터가 다시 필요해지면, 기록해 둔 슬롯 번호를 보고 스왑 디스크에서 메모리로 데이터를 읽어온다.
 	lock_acquire(&swap_lock);
 	for (size_t i = 0; i < SECTORS_PER_PAGE; i++) {
 		disk_read(swap_disk, anon_page->index * SECTORS_PER_PAGE + i,
