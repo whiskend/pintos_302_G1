@@ -8,9 +8,6 @@ KAIST Pintos에서 virtual address부터 physical frame과 swap disk까지 이�
 
 팀 변경과 함께 이 저장소는 별도로 초기화되었습니다. 첫 저장소와 Git ancestry를 공유하지는 않지만, 같은 KAIST Pintos 과정에서 Threads와 User Programs 다음 단계인 Virtual Memory 구현을 이어갔습니다.
 
-- 이전 단계: [`NearthYou/pintos_lab`](https://github.com/NearthYou/pintos_lab)
-- 전체 프로젝트 인덱스: [`NearthYou/pintos-os-lab`](https://github.com/NearthYou/pintos-os-lab)
-
 ## What we implemented
 
 | 영역 | 구현 범위 | 대표 근거 |
@@ -42,17 +39,9 @@ flowchart LR
 - 물리 frame이 부족하면 victim을 고르고 anonymous page는 swap disk로, file-backed page는 파일 정책에 따라 내보냅니다.
 - 프로세스 종료와 `munmap`에서는 aux, file, swap slot, frame 관계를 중복 해제하지 않도록 수명을 정리합니다.
 
-## Collaboration and contributions
-
-이 프로젝트는 팀 구현입니다. 특히 **supplemental page table, frame table, lazy loading 기초와 디버깅은 `NearthYou`와 `cad8798-cmd`가 페어프로그래밍으로 진행**했습니다.
-
-`NearthYou`는 anonymous swap과 eviction PR을 주도했지만, 리뷰와 다른 팀원의 page-fault·stack·mmap·SPT-copy 구현을 거쳐 전체 VM으로 통합됐습니다. VM 전체를 개인 단독 구현으로 표현하지 않습니다.
-
-기능별 개인·페어·팀 경계와 커밋은 [기여 문서](docs/portfolio/CONTRIBUTIONS.md)에서 확인할 수 있습니다.
-
 ## Fresh verification
 
-이번 문서 정리에서는 시간이 오래 걸리는 VM full suite를 다시 실행하지 않았습니다. 따라서 현재 `main`의 전체 통과를 주장하지 않습니다. 당시 PR에 기록된 테스트와 현재 재현 명령은 [검증 문서](docs/portfolio/VERIFICATION.md)에 분리해 두었습니다.
+당시 PR에 기록된 테스트와 현재 재현 명령은 [검증 문서](docs/portfolio/VERIFICATION.md)에 분리해 두었습니다.
 
 ## Run locally
 
@@ -69,17 +58,6 @@ make -C vm check
 ```bash
 make -C vm tests/vm/swap-anon.result
 ```
-
-## Known limitations
-
-- 저장소는 Phase 1과 별도의 Git 이력으로 초기화되어 두 저장소 사이의 소스 계보를 증명하지 않습니다.
-- PR #96 시점에는 `swap-anon`이 통과했지만 mmap과 SPT copy 의존 테스트는 후속 구현이 필요했습니다.
-- 이후 PR #98~#102가 해당 경로를 보완했지만, 이번 문서 정리에서 VM full suite를 재실행하지 않았으므로 전체 통과로 확장하지 않습니다.
-- KAIST Pintos 소스의 공개·재배포 조건은 반드시 원본 라이선스를 확인해야 합니다.
-
-## Previous phase
-
-Threads와 User Programs 단계는 [`NearthYou/pintos_lab`](https://github.com/NearthYou/pintos_lab)에서 확인할 수 있습니다. 두 단계를 한 번에 보는 문서는 [`NearthYou/pintos-os-lab`](https://github.com/NearthYou/pintos-os-lab)에 정리합니다.
 
 ## License and attribution
 
