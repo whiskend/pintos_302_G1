@@ -1,157 +1,64 @@
-# 📘 Docker기반 Pintos 개발 환경 구축 가이드 
+# Pintos Phase 2 — Virtual Memory
 
-이 문서는 **Windows**와 **macOS** 사용자가 Docker와 VSCode DevContainer 기능을 활용하여 Pintos OS 프로젝트를 빠르게 구축할 수 있도록 도와줍니다.
+> A C-based virtual-memory implementation lab covering supplemental page tables, lazy loading, frame allocation, swap, eviction, stack growth, and memory-mapped files.
 
-[**주의**]
-* ubunbu:22.04 버전은 충분한 테스트와 검증이 되지 않았습니다. 이 점을 주의해서 사용하시기 바랍니다.
+KAIST Pintos에서 virtual address부터 physical frame과 swap disk까지 이어지는 page lifecycle을 직접 구현하고 디버깅한 운영체제 팀 프로젝트입니다.
 
-[**참고**] 
-* pintos 도커 환경은 `64비트 기반 X86-64` 기반의 `ubuntu:22.04` 버전을 사용합니다.
-   * kaist-pintos는 오리지널 pintos와 달리 64비트 환경을 지원합니다.
-   * 이번 도커 환경은 ubuntu 22.04를 지원하여 vscode의 최신 버전에서 원격 연결이 안되는 문제를 해결하였습니다.
-* pintos 도커 환경은 kaist-pintos에서 추천하는 qemu 에뮬레이터를 설치하고 사용합니다. 
-* pintos 도커 환경은 9주차부터 13주차까지 같은 환경을 사용합니다. 이 기간동안 별도의 개발 환경을 제공하지 않습니다.
-* 기존 도커 환경과 달리 `vscode`와 통합된 디버깅 환경(F5로 시작하는)을 제공하지 않습니다. 디버깅이 필요한 경우 `gdb`를 사용하세요. 
-* vscode에서 터미널을 오픈하면 자동으로 `source /workspaces/pintos_22.04_lab_docker/pintos/activate`를 실행합니다.
+## Project continuity
 
----
+팀 변경과 함께 이 저장소는 별도로 초기화되었습니다. 첫 저장소와 Git ancestry를 공유하지는 않지만, 같은 KAIST Pintos 과정에서 Threads와 User Programs 다음 단계인 Virtual Memory 구현을 이어갔습니다.
 
-## 1. Docker란 무엇인가요?
+## What we implemented
 
-**Docker**는 애플리케이션을 어떤 컴퓨터에서든 **동일한 환경에서 실행**할 수 있게 도와주는 **가상화 플랫폼**입니다.  
+| 영역 | 구현 범위 | 대표 근거 |
+| --- | --- | --- |
+| SPT·frame·lazy loading | page 메타데이터, frame table, lazy segment 초기화와 claim 경로 | [PR #85](https://github.com/whiskend/pintos_302_G1/pull/85), [#88](https://github.com/whiskend/pintos_302_G1/pull/88), [#90](https://github.com/whiskend/pintos_302_G1/pull/90) |
+| Page fault와 rollback | fault 처리, claim 실패 시 frame/page 관계 복구 | [PR #84](https://github.com/whiskend/pintos_302_G1/pull/84), [#87](https://github.com/whiskend/pintos_302_G1/pull/87) |
+| Anonymous swap·eviction | bitmap 기반 swap slot, disk I/O, victim frame 교체 | [PR #92](https://github.com/whiskend/pintos_302_G1/pull/92), [#96](https://github.com/whiskend/pintos_302_G1/pull/96) |
+| Stack growth | syscall user buffer를 포함한 stack 확장 | [PR #95](https://github.com/whiskend/pintos_302_G1/pull/95) |
+| mmap·munmap | file-backed page의 lazy mapping과 해제 | [PR #98](https://github.com/whiskend/pintos_302_G1/pull/98), [#100](https://github.com/whiskend/pintos_302_G1/pull/100) |
+| SPT copy·resource lifetime | fork 시 page 복사, swapped page와 aux 정리 | [PR #99](https://github.com/whiskend/pintos_302_G1/pull/99), [#102](https://github.com/whiskend/pintos_302_G1/pull/102) |
 
-Docker는 다음 구성요소로 이루어져 있습니다:
+## Page lifecycle architecture
 
-- **Docker Engine**: 컨테이너를 실행하는 핵심 서비스
-- **Docker Image**: 컨테이너 생성에 사용되는 템플릿 (레시피 📃)
-- **Docker Container**: 이미지를 기반으로 생성된 실제 실행 환경 (요리 🍜)
+```mermaid
+flowchart LR
+    VA["virtual address"] --> SPT["supplemental page table"]
+    SPT --> U["uninit / lazy page"]
+    U --> C["claim page"]
+    C --> F["frame table"]
+    F --> E["eviction policy"]
+    E --> A["anonymous swap disk"]
+    E --> M["file-backed mmap"]
+    A --> C
+    M --> C
+```
 
-### ✅ AWS EC2와의 차이점
+- SPT는 page-aligned virtual address를 기준으로 각 프로세스의 page 상태를 찾습니다.
+- claim은 frame 확보, page/frame 연결, page table mapping, `swap_in`을 하나의 복구 가능한 흐름으로 묶습니다.
+- 물리 frame이 부족하면 victim을 고르고 anonymous page는 swap disk로, file-backed page는 파일 정책에 따라 내보냅니다.
+- 프로세스 종료와 `munmap`에서는 aux, file, swap slot, frame 관계를 중복 해제하지 않도록 수명을 정리합니다.
 
-| 구분 | EC2 같은 VM | Docker 컨테이너 |
-|------|-------------|-----------------|
-| 실행 단위 | OS 포함 전체 | 애플리케이션 단위 |
-| 실행 속도 | 느림 (수십 초 이상) | 매우 빠름 (거의 즉시) |
-| 리소스 사용 | 무거움 | 가벼움 |
+## Fresh verification
 
----
+당시 PR에 기록된 테스트와 현재 재현 명령은 [검증 문서](docs/portfolio/VERIFICATION.md)에 분리해 두었습니다.
 
-## 2. VSCode DevContainer란 무엇인가요?
+## Run locally
 
-**DevContainer**는 VSCode에서 Docker 컨테이너를 **개발 환경**처럼 사용할 수 있게 해주는 기능입니다.
-
-- 코드를 실행하거나 디버깅할 때 **컨테이너 내부 환경에서 동작**
-- 팀원 간 **환경 차이 없이 동일한 개발 환경 구성** 가능
-- `.devcontainer` 폴더에 정의된 설정을 VSCode가 읽어 자동 구성
-
----
-
-## 3. Docker Desktop 설치하기
-
-1. Docker 공식 사이트에서 설치 파일 다운로드:  
-   👉 [https://www.docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop)
-
-2. 설치 후 Docker Desktop 실행  
-   - Windows: Docker 아이콘이 트레이에 떠야 함  
-   - macOS: 상단 메뉴바에 Docker 아이콘 확인
-
----
-
-## 4. 프로젝트 파일 다운로드 (히스토리 없이)
-
-터미널(CMD, PowerShell, zsh 등)에서 아래 명령어로 프로젝트 폴더만 내려받습니다:
+Docker/Dev Container 환경에서 다음 명령으로 재현할 수 있습니다.
 
 ```bash
-git clone --depth=1 https://github.com/krafton-jungle/pintos_22.04_lab_docker.git 
+cd pintos
+source ./activate
+make -C vm check
 ```
 
-- `--depth=1` 옵션은 git commit 히스토리를 생략하고 **최신 파일만 가져옵니다.**
-
-### 📂 다운로드 후 폴더 구조 설명
-
-```
-pintos_22.04_lab_docker/
-├── .devcontainer/
-│   ├── devcontainer.json      # VSCode에서 컨테이너 환경 설정
-│   └── Dockerfile             # pintos 개발 환경 도커 이미지 정의
-│
-├── pintos
-│   ├── threads                # 9주차 threads 프로젝트 폴더
-│   ├── userprog               # 10-11주차 user program 프로젝트 폴더
-│   └── vm                     # 12-13주차 virtual memory 프로젝트 폴더
-│
-└── README.md                  # 현재 문서
-```
----
-
-## 5. VSCode에서 해당 프로젝트 폴더 열기
-
-1. VSCode를 실행
-2. `파일 → 폴더 열기`로 방금 클론한 `pintos_22.04_lab_docker` 폴더를 선택
-
----
-
-## 6. 개발 컨테이너: 컨테이너에서 열기
-
-1. VSCode에서 `Ctrl+Shift+P` (Windows/Linux) 또는 `Cmd+Shift+P` (macOS)를 누릅니다.
-2. 명령어 팔레트에서 `Dev Containers: Reopen in Container`를 선택합니다.
-3. 이후 컨테이너가 자동으로 실행되고 빌드됩니다. 처음 컨테이너를 열면 빌드하는 시간이 오래걸릴 수 있습니다. 빌드 후, 프로젝트가 **컨테이너 안에서 실행됨**.
-
----
-
-## 7. C 파일에 브레이크포인트 설정 후 디버깅 (F5)
-pintos 랩에서는 vscode기반의 디버깅을 지원하지 않습니다. 
-
----
-## 8. 새로운 Git 리포지토리에 Commit & Push 하기
-
-금주 프로젝트를 개인 Git 리포와 같은 다른 리포지토리에 업로드하려면, 기존 Git 연결을 제거하고 새롭게 초기화해야 합니다.
-
-### ✅ 완전히 새로운 Git 리포로 업로드하는 방법
-
-아래 명령어를 순서대로 실행하세요:
+특정 anonymous swap 사례만 실행하려면 다음 명령을 사용합니다.
 
 ```bash
-rm -rf .git
-git init
-git remote add origin https://github.com/myusername/my-new-repo.git
-git add .
-git commit -m "Clean start"
-git push -u origin main
+make -C vm tests/vm/swap-anon.result
 ```
 
-### 📌 설명
+## License and attribution
 
-- `rm -rf .git`: 기존 Git 기록과 연결을 완전히 삭제합니다.
-- `git init`: 현재 폴더를 새로운 Git 리포지토리로 초기화합니다.
-- `git remote add origin ...`: 새로운 리포지토리 주소를 origin으로 등록합니다.
-- `git add .` 및 `git commit`: 모든 파일을 커밋합니다.
-- `git push`: 새로운 리포에 최초 업로드(Push)합니다.
-
-이 과정을 거치면 기존 리포와의 연결은 완전히 제거되고, **새로운 독립적인 프로젝트로 관리**할 수 있습니다.
-
----
-
-## 간단 실행 방법
-
-1. Docker Desktop을 실행합니다.
-2. 사용할 IDE에서 이 프로젝트 폴더를 엽니다.
-3. VSCode 기본 환경은 `Cmd+Shift+P` 또는 `Ctrl+Shift+P`를 누르고 `Dev Containers: Reopen in Container`를 실행합니다.
-4. CLion용 환경은 JetBrains Dev Containers에서 `.devcontainer/clion/devcontainer.json`을 선택합니다.
-5. 컨테이너 터미널에서 원하는 프로젝트 디렉터리로 이동해 빌드/테스트합니다.
-
-```bash
-cd pintos/threads   # 9주차
-# cd pintos/userprog  # 10-11주차
-# cd pintos/vm        # 12-13주차
-
-make
-make check
-```
-
-특정 테스트만 실행하려면 먼저 `make` 후 `build` 디렉터리에서 실행합니다.
-
-```bash
-cd pintos/threads/build
-make tests/threads/alarm-zero.result
-```
+이 저장소는 KAIST Pintos 교육용 코드베이스와 Stanford Pintos를 기반으로 합니다. 자세한 조건은 [`pintos/LICENSE`](pintos/LICENSE)를 확인하세요.
